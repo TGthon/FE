@@ -18,7 +18,7 @@ export default function LoginScreen() {
             Animated.timing(buttonOpacity, {
                 toValue: 1,
                 duration: 600,
-                delay: 400,
+                delay: 800,
                 useNativeDriver: true,
             })
         ]).start();
