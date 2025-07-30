@@ -1,8 +1,9 @@
+import { useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
-
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
+    const router = useRouter();
     const logoY = useRef(new Animated.Value(0)).current;
     const buttonOpacity = useRef(new Animated.Value(0)).current;
 
@@ -28,9 +29,9 @@ export default function LoginScreen() {
                 <Image source={require('../../assets/images/daypick-logo.png')} style={styles.logo} />
             </Animated.View>
             <Animated.View style={[styles.buttonContainer, { opacity: buttonOpacity }]}>
-                <View style={styles.googleButton}>
+                <TouchableOpacity style={styles.googleButton} onPress={() => router.push('/(calendar)')}>
                     <Text style={styles.buttonText}>구글 계정으로 로그인</Text>
-                </View>
+                </TouchableOpacity>
             </Animated.View>
         </View>
     );
