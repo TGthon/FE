@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     },
     buttonContainer: {
         position:'absolute',
-        bottom: 250,
+        bottom: 200,
     },
     googleButton: {
         backgroundColor: '#F45F62',
@@ -66,6 +66,6 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#fff',
         fontWeight: 'bold',
-        fontSize: 22,
+        fontSize: 16,
     },
 });
