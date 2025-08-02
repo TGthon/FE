@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Image,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -22,7 +23,10 @@ export default function LoginScreen() {
   const buttonOpacity = useRef(new Animated.Value(0)).current;
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: '968643572251-jupjisf0ht3cin2mhuosp5ie7jhivjl2.apps.googleusercontent.com',
+    webClientId: '968643572251-2kuauukl3ja1ltr00vuigkk2qvu7bd5j.apps.googleusercontent.com',
+    androidClientId: '968643572251-jupjisf0ht3cin2mhuosp5ie7jhivjl2.apps.googleusercontent.com',
+    scopes: ["openid", "profile", "email"],
+    responseType: "id_token",
   });
 
   // 로딩 시 애니메이션 실행
@@ -48,7 +52,7 @@ export default function LoginScreen() {
     const handleLogin = async () => {
       if (response?.type !== 'success') return;
 
-      const idToken = response.authentication?.idToken;
+      const idToken = response.params.id_token;
       if (!idToken) return;
 
       try {
@@ -57,7 +61,7 @@ export default function LoginScreen() {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: `type=android&code=${encodeURIComponent(idToken)}`,
+          body: `type=${Platform.OS}&code=${encodeURIComponent(idToken)}`,
         });
 
         if (!res.ok) throw new Error('서버 오류');
