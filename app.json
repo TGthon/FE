@@ -17,7 +17,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.tjdus/daypick"
+      "package": "com.tjdus.DayPick"
     },
     "web": {
       "bundler": "metro",
