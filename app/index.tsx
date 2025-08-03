@@ -1,6 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Google from 'expo-auth-session/providers/google';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useRef } from 'react';
 import {
+  Alert,
   Animated,
   Easing,
   Image,
@@ -9,11 +13,7 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Alert,
 } from 'react-native';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -41,7 +41,7 @@ export default function LoginScreen() {
       Animated.timing(buttonOpacity, {
         toValue: 1,
         duration: 500,
-        delay: 600,
+        delay: 1000,
         useNativeDriver: true,
       }),
     ]).start();
@@ -71,7 +71,8 @@ export default function LoginScreen() {
         // 로그인 성공 기록 저장
         await AsyncStorage.setItem('isLoggedIn', 'true');
 
-        router.replace('/(calendar)');
+        // 캘린더 화면으로 이동
+        router.replace('/calendar');
       } catch (err) {
         Alert.alert('로그인 실패', '서버와 통신 중 오류가 발생했습니다.');
       }
@@ -87,7 +88,7 @@ export default function LoginScreen() {
 
       if (saved === 'true') {
         // 로그인 기록 있음 → 바로 캘린더로
-        router.replace('/(calendar)');
+        router.replace('/calendar');
       } else {
         // 로그인 기록 없음 → 구글 로그인 시도
         promptAsync();
@@ -101,7 +102,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <Animated.View style={[styles.logoContainer, { transform: [{ translateY: logoY }] }]}>
         <Image
-          source={require('../../assets/images/daypick-logo.png')}
+          source={require('../assets/images/daypick-logo.png')}
           style={styles.logo}
         />
       </Animated.View>
