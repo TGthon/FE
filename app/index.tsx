@@ -1,14 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ResponseType } from 'expo-auth-session/build/AuthRequest.types';
 import * as Google from 'expo-auth-session/providers/google';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { jwtDecode } from 'jwt-decode';
 import React, { useEffect, useRef } from 'react';
 import {
   Alert,
   Animated,
   Easing,
   Image,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -50,12 +52,27 @@ export default function LoginScreen() {
   const logoY = useRef(new Animated.Value(0)).current;
   const buttonOpacity = useRef(new Animated.Value(0)).current;
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: '968643572251-2kuauukl3ja1ltr00vuigkk2qvu7bd5j.apps.googleusercontent.com',
-    androidClientId: '968643572251-jupjisf0ht3cin2mhuosp5ie7jhivjl2.apps.googleusercontent.com',
-    scopes: ['openid', 'profile', 'email'],
-    responseType: 'id_token',
-  });
+  const getRequestSettings = () => {
+    if (Platform.OS === 'web') {
+      return {
+        clientId: '968643572251-2kuauukl3ja1ltr00vuigkk2qvu7bd5j.apps.googleusercontent.com',
+        scopes: ['openid', 'profile', 'email'],
+        responseType: ResponseType.IdToken,
+      }
+    }
+    else {
+      return {
+        clientId: '968643572251-2kuauukl3ja1ltr00vuigkk2qvu7bd5j.apps.googleusercontent.com',
+        scopes: ['openid', 'profile', 'email'],
+        responseType: ResponseType.Code,
+        redirectUri: "https://api.ldh.monster/api/auth/googleCallback",
+        usePKCE: false,
+      }
+    }
+  }
+  const [request, response, promptAsync] = Google.useAuthRequest(getRequestSettings());
+  console.log(JSON.stringify(request));
+  
 
   // 로딩 애니메이션
   useEffect(() => {
@@ -75,28 +92,32 @@ export default function LoginScreen() {
     ]).start();
   }, []);
 
-  // 로그인 응답 처리
+  // 로그인 응답 처리 (앱)
   useEffect(() => {
-    const handleLogin = async () => {
-      if (response?.type !== 'success') return;
-      const idToken = response.params.id_token;
-      if (!idToken) {
-        Alert.alert('로그인 실패', 'ID 토큰을 가져오지 못했습니다.');
-        return;
-      }
+    if (Platform.OS === 'web') 
+      return;
+    const subscription = Linking.addEventListener('url', async ({ url }) => {
+      // console.log('Received URL:', url);
+      
+      const { queryParams } = Linking.parse(url);
 
-      const payload = jwtDecode<GoogleIdPayload>(idToken);
-      const email = payload.email;
-      if (!email) {
-        Alert.alert('로그인 실패', '이메일을 가져오지 못했습니다.');
+      if (!queryParams)
         return;
-      }
 
+      console.log('Auth code: ', queryParams.code);
+      console.log('State: ', queryParams.state);
+
+      if (typeof queryParams.code !== 'string')
+        return;
+      if (typeof queryParams.state !== 'string')
+        return;
+
+      const code = queryParams.code;
       try {
         const res = await fetch('https://api.ldh.monster/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `type=none&code=${encodeURIComponent(email)}`,
+          body: `type=app&code=${encodeURIComponent(code)}`,
         });
 
         if (!res.ok) {
@@ -109,7 +130,51 @@ export default function LoginScreen() {
         await saveSession({
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
-          email,
+          email: data.email,
+          uid: data.uid,
+        });
+
+        router.replace('/calendar');
+      } catch (error) {
+        console.error(error);
+        Alert.alert('로그인 실패', '로그인 중 오류가 발생했습니다. 다시 시도해주세요.');
+      }
+    });
+    return () => subscription.remove();
+  }, [])
+
+  // 로그인 응답 처리 (웹)
+  useEffect(() => {
+    if (Platform.OS !== 'web')
+      return;
+
+    const handleLogin = async () => {
+      //alert(JSON.stringify(response));
+      if (response?.type !== 'success') return;
+      const idToken = response.params.id_token;
+      if (!idToken) {
+        Alert.alert('로그인 실패', 'ID 토큰을 가져오지 못했습니다.');
+        return;
+      }
+
+      try {
+        const res = await fetch('https://api.ldh.monster/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `type=web&code=${encodeURIComponent(idToken)}`,
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`서버 오류: ${res.status} ${text}`);
+        }
+
+        const data = await res.json();
+
+        await saveSession({
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          email: data.email,
           uid: data.uid,
         });
 
