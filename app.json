@@ -45,6 +45,12 @@
         "projectId": "ac1756f7-97fb-47f9-ab6c-50099fa4acde"
       }
     },
-    "owner": "tjdus"
+    "owner": "tjdus",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ac1756f7-97fb-47f9-ab6c-50099fa4acde"
+    }
   }
 }
