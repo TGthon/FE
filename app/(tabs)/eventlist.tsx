@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { FlatList, View, Text, Modal, TextInput, Pressable, Alert, Platform } from 'react-native';
 import EventCard from '../components/EventCard';
+import { useRouter } from 'expo-router';
 
 type EventItem = {
   id: string;
@@ -11,6 +12,8 @@ type EventItem = {
 };
 
 export default function EventListScreen() {
+    const router = useRouter();
+
   const [data, setData] = useState<EventItem[]>([
     { id: '1', title: '그룹 이름', people: 7, status: '투표 완료', date: '2025.08.07' },
     { id: '2', title: '맛집 투어', people: 5, status: '투표 전' },
@@ -44,7 +47,7 @@ export default function EventListScreen() {
         }
         return;
     }
-    
+
     Alert.alert(
       '그룹 삭제',
       `"${item?.title}" 을(를) 삭제할까요? 이 작업은 되돌릴 수 없습니다.`,
@@ -76,7 +79,9 @@ export default function EventListScreen() {
         people={item.people}
         status={item.status}
         date={item.date}
-        onPress={() => {}}
+        onPress={() => 
+            router.push({ pathname: '../(event)/event/[id]', params: { id: item.id, title: item.title}})
+        }
         onRename={() => openRename(item.id, item.title)}
         onDelete={() => confirmDelete(item)}
       />
