@@ -14,13 +14,8 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
-import axios from "axios";
 import { getAccessToken } from "../lib/api";
 
-/*import { getAuth } from "firebase/auth";
-
-const auth = getAuth();
-const user = auth.currentUser;*/
 
 
 type FriendItem = {
@@ -64,6 +59,8 @@ export default function FriendNGroupScreen() {
     { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://via.placeholder.com/80" },
   ]);
 
+
+
   const handleAddFriend = async () => {
     if (!newFriendEmail.trim()) {
       Alert.alert("실패", "이메일을 입력해주세요.");
@@ -77,38 +74,40 @@ export default function FriendNGroupScreen() {
     }
 
     const token = localStorage.getItem("accessToken");
-    try {
-      const response = await axios.post(
-        "http://localhost:8081/friends/add",
-        { friendEmail: newFriendEmail },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`, // 로그인 시 받은 JWT 토큰
-          },
-        }
-      );
+    if (!token) {
+      Alert.alert("오류", "로그인이 필요합니다.");
+      return;
+    }
 
-      const addedFriend = response.data.friend;
+    try {
+      const response = await fetch("http://localhost:8081/friends/add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ friendEmail: newFriendEmail }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        Alert.alert("오류", data.message || "친구 추가 실패");
+        return;
+      }
+
+      const addedFriend = data.friend;
+
       setFriends((prev) => [...prev, addedFriend]);
       setNewFriendEmail("");
       setShowAddFriendModal(false);
       Alert.alert("성공", `${addedFriend.name}님을 친구로 추가했어요!`);
-    } catch (error: any) {
-      Alert.alert("오류", error.response?.data?.message || "친구 추가 실패");
+    } catch (error) {
+      Alert.alert("오류", "네트워크 오류가 발생했습니다.");
     }
-
-  // 임시로 "존재한다"고 가정
-  const newFriend: FriendItem = {
-    id: Date.now().toString(),
-      name: newFriendEmail.split("@")[0], // 이메일 앞부분을 이름처럼 사용
-      email: newFriendEmail,
-      avatar: "https://via.placeholder.com/80",
-    };
-
-    setFriends((prev) => [...prev, newFriend]);
-    setNewFriendEmail("");
-    setShowAddFriendModal(false);
   };
+
+  
 
   const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
