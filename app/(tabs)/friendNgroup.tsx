@@ -14,6 +14,14 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
+import axios from "axios";
+
+/*import { getAuth } from "firebase/auth";
+
+const auth = getAuth();
+const user = auth.currentUser;*/
+
+
 type FriendItem = {
   id: string;
   name: string;
@@ -55,18 +63,38 @@ export default function FriendNGroupScreen() {
     { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://via.placeholder.com/80" },
   ]);
 
-    const handleAddFriend = () => {
+  const handleAddFriend = async () => {
     if (!newFriendEmail.trim()) {
       Alert.alert("실패", "이메일을 입력해주세요.");
       return;
     }
 
-    // 이미 있는지 확인
     const exists = friends.find((f) => f.email === newFriendEmail);
     if (exists) {
       Alert.alert("실패", "이미 등록된 친구입니다.");
       return;
     }
+/*
+    try {
+      let response
+
+      if (user) {
+        response = await axios.post("http://localhost:8081/friends/add", {
+          userEmail: user.email, // 로그인한 사용자 이메일을 동적으로 가져옴
+          friendEmail: newFriendEmail,
+        });
+      }
+
+      const addedFriend = response?.data?.friend;
+
+      setFriends((prev) => [...prev, addedFriend]);
+      setNewFriendEmail("");
+      setShowAddFriendModal(false);
+      Alert.alert("성공", `${addedFriend.name}님을 친구로 추가했어요!`);
+    } catch (error: any) {
+      Alert.alert("오류", error.response?.data?.message || "친구 추가 실패");
+    }
+    */
 
     // 임시로 "존재한다"고 가정 (실제 서비스면 서버에서 확인 필요)
     const newFriend: FriendItem = {
@@ -97,7 +125,7 @@ export default function FriendNGroupScreen() {
       },
     ]);
   };
-  
+
   const handleDeleteFriend = (friendId: string) => {
     Alert.alert("친구 삭제", "정말 이 친구를 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
@@ -118,16 +146,16 @@ export default function FriendNGroupScreen() {
     <Modal visible={!!selectedGroup} animationType="slide" transparent>
       {/* 바깥 회색 배경 */}
       <Pressable style={styles.overlay} onPress={() => setSelectedGroup(null)}>
-        
+
         {/* 안쪽 박스 (닫힘 방지) */}
-        <Pressable 
-          style={styles.modalBox} 
+        <Pressable
+          style={styles.modalBox}
           onPress={(e) => e.stopPropagation()}  // 👈 클릭 이벤트 전파 막기
         >
           {/* 헤더 */}
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{selectedGroup?.name}</Text>
-            <Pressable onPress={() => selectedGroup && 
+            <Pressable onPress={() => selectedGroup &&
               handleLeaveGroup(selectedGroup!.id)}>
               <MaterialCommunityIcons name="exit-to-app" size={24} color="black" />
             </Pressable>
@@ -230,7 +258,7 @@ export default function FriendNGroupScreen() {
               </Pressable>
             ))}
           </View>
-          
+
           {/* ✅ 새 이벤트 만들기 버튼 */}
           <Pressable
             style={styles.addEventBtn}
@@ -302,7 +330,7 @@ export default function FriendNGroupScreen() {
         )}
         keyExtractor={(item) => item.id}
       />
-      
+
 
       {GroupModal()}
       {FriendModal()}
@@ -330,7 +358,7 @@ export default function FriendNGroupScreen() {
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 18, fontWeight: "700" as const },  
+  sectionTitle: { fontSize: 18, fontWeight: "700" as const },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
