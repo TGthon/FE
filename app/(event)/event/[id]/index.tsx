@@ -8,7 +8,13 @@ export default function EventDetail() {
   return (
     <>
       {/* 헤더 타이틀 */}
-      <Stack.Screen options={{ title: title ?? '이벤트' }} />
+      <Stack.Screen options={{
+        title: title ?? '이벤트',
+        headerTitleStyle: {
+            fontSize: 24,
+            fontWeight: '700',
+        },
+        }} />
 
       <ScrollView
         contentContainerStyle={{
