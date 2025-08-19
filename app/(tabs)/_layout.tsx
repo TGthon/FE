@@ -106,6 +106,69 @@ export default function TabLayout() {
           )
         }}
       />
+      <Tabs.Screen
+        name="newevent"
+        options={{
+          title: '이벤트 추가',
+          headerShown: true,
+          headerTitleAlign: 'left',
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          tabBarIcon: ({ focused }) => (
+            <View style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <TabIcon
+                focused={focused}
+                source={require('../../assets/images/newevent.png')}
+              />
+            </View>
+          )
+        }}
+      />
+      <Tabs.Screen
+        name="friendNgroup"
+        options={{
+          title: '친구 및 그룹',
+          headerShown: true,
+          headerTitleAlign: 'left',
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          tabBarIcon: ({ focused }) => (
+            <View style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <TabIcon
+                focused={focused}
+                source={require('../../assets/images/friendNgroup.png')}
+              />
+            </View>
+          )
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: '프로필',
+          headerShown: true,
+          headerTitleAlign: 'left',
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          tabBarIcon: ({ focused }) => (
+            <View style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <TabIcon
+                focused={focused}
+                source={require('../../assets/images/profile.png')}
+              />
+            </View>
+          )
+        }}
+      />
     </Tabs>
   );
 }
