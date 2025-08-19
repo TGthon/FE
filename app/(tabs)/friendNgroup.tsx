@@ -16,10 +16,10 @@ import { useRouter } from "expo-router";
 
 import axios from "axios";
 
-import { getAuth } from "firebase/auth";
+/*import { getAuth } from "firebase/auth";
 
 const auth = getAuth();
-const user = auth.currentUser;
+const user = auth.currentUser;*/
 
 
 type FriendItem = {
@@ -74,12 +74,12 @@ export default function FriendNGroupScreen() {
       Alert.alert("실패", "이미 등록된 친구입니다.");
       return;
     }
-
+/*
     try {
       let response
 
       if (user) {
-        response = await axios.post("http://localhost:3000/friends/add", {
+        response = await axios.post("http://localhost:8081/friends/add", {
           userEmail: user.email, // 로그인한 사용자 이메일을 동적으로 가져옴
           friendEmail: newFriendEmail,
         });
@@ -94,6 +94,7 @@ export default function FriendNGroupScreen() {
     } catch (error: any) {
       Alert.alert("오류", error.response?.data?.message || "친구 추가 실패");
     }
+    */
 
     // 임시로 "존재한다"고 가정 (실제 서비스면 서버에서 확인 필요)
     const newFriend: FriendItem = {
