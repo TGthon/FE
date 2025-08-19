@@ -137,12 +137,13 @@ export default function FriendNGroupScreen() {
           {/* 이벤트 이름 → 상세 페이지 이동 */}
           {selectedGroup?.event && (
             <Pressable
-              onPress={() =>
+              onPress={() => {
+                setSelectedGroup(null);
                 router.push({
                   pathname: "../(event)/event/[id]",
                   params: { id: "2", title: selectedGroup.event },
-                })
-              }
+                });
+              }}
             >
               <Text style={[styles.subText, { color: "#F45F62", textDecorationLine: "underline" }]}>
                 {selectedGroup.event}
@@ -208,12 +209,13 @@ export default function FriendNGroupScreen() {
             ].map((ev) => (
               <Pressable
                 key={ev.id}
-                onPress={() =>
+                onPress={() => {
+                  setSelectedFriend(null);
                   router.push({
                     pathname: "../(event)/event/[id]",
                     params: { id: ev.id, title: ev.title },
-                  })
-                }
+                  });
+                }}
                 style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}
               >
                 <MaterialCommunityIcons
@@ -413,3 +415,4 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
+
