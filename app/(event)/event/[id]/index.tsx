@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { Calendar, DateData } from 'react-native-calendars';
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import { Calendar } from 'react-native-calendars';
+import type { DateData } from 'react-native-calendars';
 
 /** 투표 스키마 */
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -9,7 +10,7 @@ type Vote = { userId: string; date: string; status: VoteStatus };
 
 type DayAgg = { preferred: number; nonPreferred: number; impossible: number; total: number };
 
-/** 목업 투표 데이터 (YYYY-MM-DD) */
+/** 목업 투표 데이터 (YYYY-MM-DD) — 백엔드 연결 시 교체 */
 const VOTES: Vote[] = [
   { userId: 'u1', date: '2025-08-07', status: 'preferred' },
   { userId: 'u2', date: '2025-08-07', status: 'preferred' },
@@ -36,6 +37,7 @@ const VOTES: Vote[] = [
 export default function EventDetail() {
   const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
   const [selected, setSelected] = useState<string | null>(null);
+  const router = useRouter();
 
   /** 날짜별 집계 */
   const aggByDate = useMemo<Record<string, DayAgg>>(() => {
@@ -51,43 +53,45 @@ export default function EventDetail() {
     return m;
   }, []);
 
+  /** 분홍 강도 스케일 기준치: (불가능 없는 날들 중) 선호 최댓값 */
+  const maxPreferred = useMemo(() => {
+    let max = 0;
+    Object.values(aggByDate).forEach(c => {
+      if (c.impossible === 0) max = Math.max(max, c.preferred);
+    });
+    return Math.max(max, 1); // 0 방지
+  }, [aggByDate]);
+
   /** 선택된 날짜의 카운트 */
   const counts = useMemo<DayAgg>(() => {
     if (!selected || !aggByDate[selected]) return { preferred: 0, nonPreferred: 0, impossible: 0, total: 0 };
     return aggByDate[selected];
   }, [selected, aggByDate]);
 
-  /** 달력에 칠할 색 계산 + markedDates 생성 */
+  /** 달력 마킹(배경/텍스트만; 노란 점은 dayComponent에서 계산) */
   const markedDates = useMemo(() => {
     const result: Record<string, any> = {};
-
     Object.entries(aggByDate).forEach(([date, c]) => {
-      const { bg, text } = computeDayColor(c);
+      const { bg, text } = computeDayColor(c, maxPreferred);
       result[date] = {
         customStyles: {
-          container: {
-            backgroundColor: bg,
-            borderRadius: 8,
-            borderWidth: selected === date ? 2 : 0,
-            borderColor: selected === date ? '#1D4ED8' : 'transparent', // 선택 시 파란 테두리
-          },
-          text: { color: text, fontWeight: selected === date ? '700' : '400' },
+          container: { backgroundColor: bg, borderRadius: 8 },
+          text: { color: text, fontWeight: '400' },
         },
       };
     });
 
-    // 집계가 없는 날짜를 선택했을 때도 선택 표시
+    // 집계가 없는 날짜를 선택했을 때 시각적 테두리만 표시(배경/글자색은 기본)
     if (selected && !result[selected]) {
       result[selected] = {
         customStyles: {
-          container: { borderRadius: 8, borderWidth: 2, borderColor: '#1D4ED8' },
+          container: { borderRadius: 8 },
           text: { color: '#111827', fontWeight: '700' },
         },
       };
     }
-
     return result;
-  }, [aggByDate, selected]);
+  }, [aggByDate, selected, maxPreferred]);
 
   const onDayPress = useCallback((day: DateData) => {
     setSelected(day.dateString);
@@ -120,7 +124,7 @@ export default function EventDetail() {
             }}
           >
             <Text style={{ fontSize: 18, fontWeight: '700' }}>{headerTitle}</Text>
-            <Pressable onPress={() => Alert.alert('편집', '달력 편집 액션을 연결하세요.')}>
+            <Pressable onPress={() => router.push({pathname: '/(event)/event/[id]/vote', params: { id, title }})}>
               <Text style={{ fontSize: 18 }}>✏️</Text>
             </Pressable>
           </View>
@@ -129,8 +133,91 @@ export default function EventDetail() {
           <View style={{ padding: 12 }}>
             <Calendar
               markingType="custom"
-              onDayPress={onDayPress}
               markedDates={markedDates}
+              onDayPress={onDayPress}
+              /** 우하단 노란 점 & 선택 테두리 렌더링 */
+              dayComponent={({
+                date,
+                state,
+                marking,
+              }: {
+                date?: DateData;
+                state?: string;
+                marking?: any;
+              }) => {
+                if (!date) return <View style={{ width: 32, height: 32 }} />;
+
+                const isSelected = selected === date.dateString;
+                const bg = marking?.customStyles?.container?.backgroundColor ?? 'transparent';
+                const textColor =
+                  marking?.customStyles?.text?.color ??
+                  (state === 'disabled' ? '#94A3B8' : '#111827');
+
+                // 노란 점 조건: 비선호 1명 이상 && 불가능 0명
+                const agg = aggByDate[date.dateString];
+                const showDot = !!agg && agg.impossible === 0 && agg.nonPreferred > 0;
+
+                // 배치/크기 상수
+                const CELL_SIZE = 32;
+                const BUBBLE_SIZE = 28;
+                const DOT_SIZE = 7;
+                const DOT_OFFSET = 3;
+
+                return (
+                  <Pressable
+                    onPress={() => onDayPress(date)}
+                    style={{
+                      width: CELL_SIZE,
+                      height: CELL_SIZE,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      overflow: 'visible',
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: BUBBLE_SIZE,
+                        height: BUBBLE_SIZE,
+                        borderRadius: BUBBLE_SIZE / 2,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: bg,
+                        borderWidth: isSelected ? 2 : 0,
+                        borderColor: isSelected ? '#1D4ED8' : 'transparent',
+                        position: 'relative',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, color: textColor, fontWeight: isSelected ? '700' : '400' }}>
+                        {date.day}
+                      </Text>
+                    </View>
+
+                    {/* 노란 점: 셀 우하단, 원 바깥으로 살짝 이동 (흰 테두리 제거) */}
+                    {showDot && (
+                      <View
+                        pointerEvents="none"
+                        style={{
+                          position: 'absolute',
+                          right: 0,
+                          bottom: 0,
+                          transform: [{ translateX: DOT_OFFSET }, { translateY: DOT_OFFSET }],
+                          width: DOT_SIZE,
+                          height: DOT_SIZE,
+                          borderRadius: DOT_SIZE / 2,
+                          backgroundColor: '#FACC15',
+                          // 외곽선 제거 (borderWidth/borderColor 삭제)
+                          shadowColor: '#000',
+                          shadowOpacity: 0.12,
+                          shadowRadius: 1.5,
+                          shadowOffset: { width: 0, height: 0 },
+                          elevation: 1,
+                        }}
+                      />
+                    )}
+                  </Pressable>
+                );
+              }}
               theme={{
                 todayTextColor: '#2563EB',
                 arrowColor: '#2563EB',
@@ -156,21 +243,21 @@ export default function EventDetail() {
   );
 }
 
-/** 색상 계산 규칙
+/** 색상 계산 규칙 (요구 사항)
  * - impossible ≥ 1 → 회색 배경(#CBD5E1)
- * - 그 외: 분홍(#F43F5E) ↔ 흰색(#FFFFFF) 사이를 선호 비율로 보간
- *   ratio = preferred / (preferred + nonPreferred)
+ * - 그 외: "선호 인원 수"만으로 흰색↔진분홍 보간
+ *   ratio = preferred / maxPreferred
  */
-function computeDayColor(c: DayAgg) {
+function computeDayColor(c: DayAgg, maxPreferred: number) {
   if (c.impossible > 0) {
     return { bg: '#CBD5E1', text: '#111827' }; // 회색
   }
-  const denom = c.preferred + c.nonPreferred;
-  if (denom === 0) return { bg: 'transparent', text: '#111827' }; // 투표 없음
-
-  const ratio = c.preferred / denom; // 0=비선호 100% → 흰색, 1=선호 100% → 진분홍
-  const bg = mixHex('#FFFFFF', '#F43F5E', ratio);
-  const text = ratio > 0.65 ? '#FFFFFF' : '#111827'; // 어두워지면 가독성 위해 흰 글자
+  if (maxPreferred <= 0 || c.preferred <= 0) {
+    return { bg: '#FFFFFF', text: '#111827' }; // 투표 없음/선호 0 → 흰색
+  }
+  const ratio = Math.max(0, Math.min(1, c.preferred / maxPreferred)); // 0..1 clamp
+  const bg = mixHex('#FFFFFF', '#F43F5E', ratio); // 흰 → 진분홍
+  const text = ratio > 0.65 ? '#FFFFFF' : '#111827'; // 어두워지면 흰 글자
   return { bg, text };
 }
 
