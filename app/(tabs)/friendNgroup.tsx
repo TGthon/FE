@@ -8,7 +8,8 @@ import {
   Modal,
   Image,
   StyleSheet,
-  Alert
+  Alert,
+  TextInput
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -29,6 +30,9 @@ type GroupItem = {
 
 export default function FriendNGroupScreen() {
   const router = useRouter();
+
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [newFriendEmail, setNewFriendEmail] = useState("");
 
   const [groups, setGroups] = useState<GroupItem[]>([
     {
@@ -51,6 +55,31 @@ export default function FriendNGroupScreen() {
     { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://via.placeholder.com/80" },
   ]);
 
+    const handleAddFriend = () => {
+    if (!newFriendEmail.trim()) {
+      Alert.alert("실패", "이메일을 입력해주세요.");
+      return;
+    }
+
+    // 이미 있는지 확인
+    const exists = friends.find((f) => f.email === newFriendEmail);
+    if (exists) {
+      Alert.alert("실패", "이미 등록된 친구입니다.");
+      return;
+    }
+
+    // 임시로 "존재한다"고 가정 (실제 서비스면 서버에서 확인 필요)
+    const newFriend: FriendItem = {
+      id: Date.now().toString(),
+      name: newFriendEmail.split("@")[0], // 이메일 앞부분을 이름처럼 사용
+      email: newFriendEmail,
+      avatar: "https://via.placeholder.com/80",
+    };
+
+    setFriends((prev) => [...prev, newFriend]);
+    setNewFriendEmail("");
+    setShowAddFriendModal(false);
+  };
 
   const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
@@ -238,8 +267,8 @@ export default function FriendNGroupScreen() {
       />
 
       {/* 친구 리스트 */}
-      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>친구</Text>
-      <FlatList
+      {/* <Text style={[styles.sectionTitle, { marginTop: 24 }]}>친구</Text> */}
+      {/* <FlatList
         data={friends}
         renderItem={({ item }) => (
           <Pressable style={styles.friendCard} onPress={() => setSelectedFriend(item)}>
@@ -250,8 +279,50 @@ export default function FriendNGroupScreen() {
         keyExtractor={(item) => item.id}
       />
 
+      {/* 친구 리스트 + 친구추가 버튼 */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24 }}>
+        <Text style={styles.sectionTitle}>친구</Text>
+        <Pressable
+          style={styles.addFriendBtn}
+          onPress={() => setShowAddFriendModal(true)}
+        >
+          <Text style={{ color: "#fff", fontWeight: "600" }}>친구 추가</Text>
+        </Pressable>
+      </View>
+
+      <FlatList
+        data={friends}
+        renderItem={({ item }) => (
+          <Pressable style={styles.friendCard} onPress={() => setSelectedFriend(item)}>
+            <Image source={{ uri: item.avatar }} style={styles.avatarSmall} />
+            <Text style={{ marginLeft: 12 }}>{item.name}</Text>
+          </Pressable>
+        )}
+        keyExtractor={(item) => item.id}
+      />
+      
+
       {GroupModal()}
       {FriendModal()}
+
+      {/* ✅ 친구추가 모달 */}
+      <Modal visible={showAddFriendModal} animationType="slide" transparent>
+        <Pressable style={styles.overlay} onPress={() => setShowAddFriendModal(false)}>
+          <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>친구 추가</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Gmail 입력"
+              value={newFriendEmail}
+              onChangeText={setNewFriendEmail}
+              keyboardType="email-address"
+            />
+            <Pressable style={styles.addEventBtn} onPress={handleAddFriend}>
+              <Text style={{ color: "#fff", fontWeight: "600" }}>추가하기</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -326,5 +397,19 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
+  },
+
+  addFriendBtn: {
+    backgroundColor: "#F45F62",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
   },
 });
