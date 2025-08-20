@@ -1,8 +1,10 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, Modal } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
+import { Ionicons } from '@expo/vector-icons';
+import EventRenameModal from '../../../components/EventRenameModal';
 
 /** 투표 스키마 */
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -36,8 +38,23 @@ const VOTES: Vote[] = [
 
 export default function EventDetail() {
   const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
-  const [selected, setSelected] = useState<string | null>(null);
   const router = useRouter();
+
+  const [selected, setSelected] = useState<string | null>(null);
+
+  // 메뉴 모달
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // 이름 변경 모달
+  const [renameVisible, setRenameVisible] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const closeRename = () => setRenameVisible(false);
+
+  const applyRename = useCallback(async () => {
+    // TODO: 백엔드 연결 시 교체
+    // await apiPutJSON(`/event/${id}/rename`, { title: nameInput.trim()});
+    closeRename();
+  }, [id, nameInput]);
 
   /** 날짜별 집계 */
   const aggByDate = useMemo<Record<string, DayAgg>>(() => {
@@ -105,6 +122,15 @@ export default function EventDetail() {
         options={{
           title: title ?? '이벤트',
           headerTitleStyle: { fontSize: 24, fontWeight: '700' },
+          headerRight: () => (
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              hitSlop={8}
+              style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+            >
+              <Ionicons name="menu" size={28} color="#111827" />
+            </Pressable>
+          ),
         }}
       />
 
@@ -124,7 +150,7 @@ export default function EventDetail() {
             }}
           >
             <Text style={{ fontSize: 18, fontWeight: '700' }}>{headerTitle}</Text>
-            <Pressable onPress={() => router.push({pathname: '/(event)/event/[id]/vote', params: { id, title }})}>
+            <Pressable onPress={() => router.push({ pathname: '/(event)/event/[id]/vote', params: { id, title } })}>
               <Text style={{ fontSize: 18 }}>✏️</Text>
             </Pressable>
           </View>
@@ -206,7 +232,6 @@ export default function EventDetail() {
                           height: DOT_SIZE,
                           borderRadius: DOT_SIZE / 2,
                           backgroundColor: '#FACC15',
-                          // 외곽선 제거 (borderWidth/borderColor 삭제)
                           shadowColor: '#000',
                           shadowOpacity: 0.12,
                           shadowRadius: 1.5,
@@ -239,6 +264,137 @@ export default function EventDetail() {
         {/* 디버그 */}
         <Text style={{ marginTop: 16, color: '#94A3B8' }}>event id: {id}</Text>
       </ScrollView>
+
+      {/* ====== 그룹 메뉴 모달 (화면 전체 오버레이) ====== */}
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        {/* 반투명 오버레이 */}
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }}
+          onPress={() => setMenuOpen(false)}
+        />
+
+        {/* 패널 */}
+        <View
+          style={{
+            position: 'absolute',
+            right: 16,
+            top: 80,
+            width: 260,
+            backgroundColor: 'white',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#E5E7EB',
+            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOpacity: 0.15,
+            shadowRadius: 12,
+            elevation: 10,
+          }}
+        >
+          {/* 상단: 그룹명 */}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700' }}>{title ?? '그룹'}</Text>
+          </View>
+
+          {/* 구성원 리스트 (목업) */}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+            <Text style={{ marginBottom: 10, color: '#374151' }}>구성원 5명</Text>
+            {[
+              { name: '황유나', note: '(나)' },
+              { name: '이윤서', note: '(그룹장)' },
+              { name: '김동희' },
+              { name: '김서연' },
+              { name: '이동현' },
+            ].map((m, idx) => (
+              <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    marginRight: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text>👤</Text>
+                </View>
+                <Text style={{ fontSize: 14 }}>
+                  {m.name} {m.note ?? ''}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* 하단 버튼들 */}
+          <MenuItem
+            label="그룹 이름 변경"
+            onPress={() => {
+              setMenuOpen(false);
+              setNameInput(title ?? '');
+              setRenameVisible(true);
+            }}
+          />
+          <MenuItem
+            label="구성원 초대하기"
+            onPress={() => {
+              setMenuOpen(false);
+              Alert.alert('TODO', '초대하기 UI로 이동');
+            }}
+          />
+          <MenuItem
+            label="도움말"
+            onPress={() => {
+              setMenuOpen(false);
+              Alert.alert('도움말', '그룹 기능에 대한 설명을 여기에 표시하세요.');
+            }}
+          />
+          <MenuItem
+            label="그룹 나가기"
+            destructive
+            onPress={() => {
+              Alert.alert(
+                '그룹 나가기',
+                '정말 이 그룹에서 나가시겠습니까?',
+                [
+                  { text: '취소', style: 'cancel' },
+                  {
+                    text: '나가기',
+                    style: 'destructive',
+                    onPress: async () => {
+                      setMenuOpen(false);
+                      try {
+                        // TODO: 실제 API 호출
+                        // await apiDeleteJSON(`/api/group/${id}/leave`);
+                        router.back();
+                      } catch (e: any) {
+                        Alert.alert('실패', e?.message ?? '나가기에 실패했습니다.');
+                      }
+                    },
+                  },
+                ],
+                { cancelable: true }
+              );
+            }}
+          />
+        </View>
+      </Modal>
+
+      {/* ====== 이름 변경 모달 (분리 컴포넌트 재사용) ====== */}
+      <EventRenameModal
+        visible={renameVisible}
+        value={nameInput}
+        onChangeText={setNameInput}
+        onCancel={closeRename}
+        onSave={applyRename}
+      />
     </>
   );
 }
@@ -305,5 +461,32 @@ function StatusRow({ label, color, count }: { label: string; color: string; coun
       </View>
       <Text>{count}</Text>
     </View>
+  );
+}
+
+function MenuItem({
+  label,
+  onPress,
+  destructive,
+}: {
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderTopWidth: 1,
+        borderTopColor: '#F3F4F6',
+        backgroundColor: pressed ? '#F9FAFB' : '#fff',
+      })}
+    >
+      <Text style={{ fontSize: 15, color: destructive ? '#DC2626' : '#111827', fontWeight: destructive ? '700' : '400' }}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }

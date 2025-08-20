@@ -2,6 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { FlatList, View, Text, Modal, TextInput, Pressable, Alert, Platform } from 'react-native';
 import EventCard from '../components/EventCard';
 import { useRouter } from 'expo-router';
+import EventRenameModal from '../components/EventRenameModal';
 // ⛔ 백엔드 연결 임시 비활성화
 // import { apiGetJSON, apiPutJSON, apiDeleteJSON, getAccessToken } from '../lib/api';
 
@@ -171,48 +172,14 @@ export default function EventListScreen() {
         onRefresh={onRefresh}
       />
 
-      {/* 이름 변경 */}
-      <Modal visible={renameVisible} transparent animationType="fade" onRequestClose={closeRename}>
-        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }} onPress={closeRename} />
-        <View
-          style={{
-            position: 'absolute',
-            left: 20,
-            right: 20,
-            top: '30%',
-            backgroundColor: 'white',
-            borderRadius: 14,
-            padding: 16,
-            shadowColor: '#000',
-            shadowOpacity: 0.2,
-            shadowRadius: 10,
-            elevation: 8,
-          }}
-        >
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>이름 변경</Text>
-          <TextInput
-            value={nameInput}
-            onChangeText={setNameInput}
-            placeholder="새 이름을 입력하세요"
-            style={{
-              borderWidth: 1,
-              borderColor: '#E5E7EB',
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              fontSize: 16,
-            }}
-          />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12, gap: 8 }}>
-            <Pressable onPress={closeRename} style={{ paddingVertical: 10, paddingHorizontal: 12 }}>
-              <Text>취소</Text>
-            </Pressable>
-            <Pressable onPress={applyRename} style={{ paddingVertical: 10, paddingHorizontal: 12 }}>
-              <Text style={{ color: '#2563eb', fontWeight: '700' }}>저장</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      {/* 이름 변경 모달 */}
+      <EventRenameModal
+        visible={renameVisible}
+        value={nameInput}
+        onChangeText={setNameInput}
+        onCancel={closeRename}
+        onSave={applyRename}
+      />
     </>
   );
 }
