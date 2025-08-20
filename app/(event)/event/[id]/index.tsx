@@ -353,7 +353,7 @@ export default function EventDetail() {
             label="도움말"
             onPress={() => {
               setMenuOpen(false);
-              Alert.alert('도움말', '그룹 기능에 대한 설명을 여기에 표시하세요.');
+              router.push('/(event)/event/tip');
             }}
           />
           <MenuItem
