@@ -150,8 +150,15 @@ export default function EventDetail() {
             }}
           >
             <Text style={{ fontSize: 18, fontWeight: '700' }}>{headerTitle}</Text>
-            <Pressable onPress={() => router.push({ pathname: '/(event)/event/[id]/vote', params: { id, title } })}>
-              <Text style={{ fontSize: 18 }}>✏️</Text>
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/(event)/event/[id]/vote',
+                  params: { id, title },
+                })
+              }
+            >
+              <Ionicons name="create-outline" size={32} color="#111827" />
             </Pressable>
           </View>
 
@@ -261,8 +268,20 @@ export default function EventDetail() {
           <StatusRow label="Impossible" color="#CBD5E1" count={`${counts.impossible}명`} />
         </View>
 
-        {/* 디버그 */}
-        <Text style={{ marginTop: 16, color: '#94A3B8' }}>event id: {id}</Text>
+        {/* 세부 시간 조율하기 버튼 */}
+        <View style={{ marginTop: 16 }}>
+          <OutlineButton
+            title="세부 시간 조율하기"
+            disabled={!selected}
+            onPress={() => {
+              if (!selected) return;
+              router.push({
+                pathname: '/(event)/event/[id]/time',
+                params: { id, title, date: selected },
+              });
+            }}
+          />
+        </View>
       </ScrollView>
 
       {/* ====== 그룹 메뉴 모달 (화면 전체 오버레이) ====== */}
@@ -486,6 +505,38 @@ function MenuItem({
     >
       <Text style={{ fontSize: 15, color: destructive ? '#DC2626' : '#111827', fontWeight: destructive ? '700' : '400' }}>
         {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function OutlineButton({
+  title,
+  onPress,
+  disabled,
+}: {
+  title: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderWidth: 1,
+        borderColor: disabled ? '#F5B7BA' : '#F45F62',
+        borderRadius: 10,
+        backgroundColor: 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
+      })}
+    >
+      <Text style={{ color: disabled ? '#F5B7BA' : '#F45F62', fontWeight: '700' }}>
+        {title}
       </Text>
     </Pressable>
   );
