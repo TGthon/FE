@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView, Dimensions, Pressable } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -21,8 +21,12 @@ const TIME_VOTES: TimeVote[] = [
 type SlotAgg = { preferred: number; nonPreferred: number; impossible: number };
 
 export default function TimeScreen() {
-  const { title, date } = useLocalSearchParams<{ title?: string; date: string }>();
   const { height: winH, width: winW } = Dimensions.get('window');
+  const router = useRouter();
+  const raw = useLocalSearchParams<{ id?: string | string[]; title?: string | string[]; date?: string | string[]}>();
+  const id = typeof raw.id === 'string' ? raw.id : raw.id?.[0];
+  const date = typeof raw.date === 'string' ? raw.date : raw.date?.[0];
+  const title = typeof raw.title === 'string' ? raw.title : raw.title?.[0];
 
   // 높이 맞춰 24줄이 화면에 보이도록
   const RESERVED_H = 200; // 헤더/여백 대략치
@@ -80,20 +84,22 @@ export default function TimeScreen() {
             justifyContent: 'space-between',
           }}
         >
-          <Text style={{ fontSize: 16, color: '#6B7280' }}>{formatKorean(date)} 기준</Text>
-
+          <Text style={{ fontSize: 16, color: '#6B7280' }}>{formatKorean(date ?? '')} 기준</Text>
           <Pressable
             onPress={() => {
-              // TODO: 편집/입력 화면 이동 등
-              // router.push({ pathname: '/(event)/event/[id]/vote', params: { id, title, date } });
+                if (!id || !date) return; // 필수 파라미터 없으면 종료(또는 Alert)
+                router.push({
+                pathname: '/(event)/event/[id]/timevote',
+                params: { id: id, date: date, title: title }, // 모두 string
+                });
             }}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="편집"
             style={{ padding: 6, backgroundColor: 'transparent' }}
-          >
+            >
             <Ionicons name="create-outline" size={28} color="#111827" />
-          </Pressable>
+            </Pressable>
         </View>
 
         {/* 헤더 (시/분 + 00/30 시작 위치 정렬, 우측 끝 '00') */}
@@ -190,18 +196,20 @@ function Row({
 }
 
 function Cell({ width, height, color }: { width: number; height: number; color: string }) {
+  const isFilled = color !== '#FFFFFF'; // 배경이 흰색이 아니면 "칠해진" 상태
   return (
     <View
       style={{
         width,
         height,
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: isFilled ? '#FFFFFF' : '#D1D5DB', // 칠해졌으면 흰 선
         backgroundColor: color,
       }}
     />
   );
 }
+
 
 function colorFor(agg: SlotAgg | undefined, maxPreferred: number) {
   if (!agg) return '#FFFFFF';
