@@ -21,6 +21,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(event)" options={{ headerShown: false }} />
         <Stack.Screen name="calendarDetail" options={{ title: '일정 상세' }} />
+        <Stack.Screen name="calendarNew" options={{ title: '새 일정' }} />
+        <Stack.Screen name="calendarEdit" options={{ title: '일정 수정' }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

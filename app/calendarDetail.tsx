@@ -104,7 +104,7 @@ export default function CalendarDetail() {
             </Pressable>
 
             <Pressable
-              onPress={() => Alert.alert('수정', '수정 화면으로 이동(구현 예정)')}
+              onPress={() => router.push({pathname: '/calendarEdit', params: { id, date, title, start, end, member, color, note }})}
               style={({ pressed }) => ({
                 flex: 1,
                 paddingVertical: 12,
