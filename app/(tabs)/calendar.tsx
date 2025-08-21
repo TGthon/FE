@@ -157,7 +157,7 @@ export default function CalendarHome() {
           >
             <Text style={{ fontSize: 18, fontWeight: '700' }}>{headerTitle}</Text>
             <Pressable
-              onPress={() => {}}
+              onPress={() => { router.push({ pathname: '/calendarNew', params: { date: selected } }) }}
               style={{
                 width: 36, height: 36, borderRadius: 18,
                 borderWidth: 2, borderColor: '#9CA3AF',
