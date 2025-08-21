@@ -1,4 +1,3 @@
-// app/(tabs)/profile.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Image, StyleSheet, Pressable, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,14 +9,17 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [picture, setPicture] = useState('');
 
   // 사용자 정보 불러오기
   useEffect(() => {
     const loadUserInfo = async () => {
       const storedName = await AsyncStorage.getItem('userName');
       const storedEmail = await AsyncStorage.getItem('userEmail');
+      const storedPicture = await AsyncStorage.getItem('userPicture');
       if (storedName) setName(storedName);
       if (storedEmail) setEmail(storedEmail);
+      if (storedPicture) setPicture(storedPicture);
     };
     loadUserInfo();
   }, []);
@@ -33,6 +35,7 @@ export default function ProfileScreen() {
         'userEmail',
         'userId',
         'userName',
+        'userPicture',
       ]);
       router.replace('/'); // 로그인 화면으로 이동
     }
@@ -48,6 +51,7 @@ export default function ProfileScreen() {
             'userEmail',
             'userId',
             'userName',
+            'userPicture',
           ]);
           router.replace('/');
         },
@@ -63,7 +67,7 @@ export default function ProfileScreen() {
 
       <View style={styles.profileCard}>
         <Image
-          source={{ uri: 'https://via.placeholder.com/80' }} // 나중에 구글 프로필 이미지로 교체 가능
+          source={{ uri: picture || 'https://via.placeholder.com/80' }}
           style={styles.avatar}
         />
         <View style={{ marginLeft: 16, flex: 1 }}>
@@ -112,13 +116,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   name: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
     marginTop: 4,
   },
   email: {
     fontSize: 14,
+    fontWeight: '600',
     color: '#374151',
     marginTop: 4,
   },

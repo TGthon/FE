@@ -30,12 +30,14 @@ async function saveSession(data: {
   email?: string;
   uid?: number;
   name?: string;
+  picture?: string;
 }) {
   await AsyncStorage.setItem(ACCESS_KEY, data.accessToken);
   if (data.refreshToken) await AsyncStorage.setItem(REFRESH_KEY, data.refreshToken);
   if (data.email) await AsyncStorage.setItem(USER_EMAIL_KEY, data.email);
   if (typeof data.uid !== 'undefined') await AsyncStorage.setItem(USER_ID_KEY, String(data.uid));
   if (data.name) await AsyncStorage.setItem('userName', data.name);
+  if (data.picture) await AsyncStorage.setItem('userPicture', data.picture);
 }
 
 async function getAccessToken() {
