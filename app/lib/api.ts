@@ -1,17 +1,11 @@
-// app/lib/api.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BASE_URL = 'https://api.ldh.monster';
 
-/**
- * B안(현재): accessToken 하나만 Authorization에 사용.
- * A안(추후): accessToken + refreshToken + userId 저장 후, 401에서 refresh 1회 시도.
- */
-
 // Storage keys
 export const ACCESS_KEY = 'accessToken';
-export const REFRESH_KEY = 'refreshToken'; // A안에서 사용
-export const USER_ID_KEY = 'userId';       // A안에서 사용
+export const REFRESH_KEY = 'refreshToken';
+export const USER_ID_KEY = 'userId';
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 export async function getAccessToken() {
@@ -21,7 +15,6 @@ export async function setAccessToken(token: string) {
   await AsyncStorage.setItem(ACCESS_KEY, token);
 }
 
-// A안 전환 시 사용 (B안에서는 굳이 안 써도 됨 — 주석 해제 없이 놔둬도 무해)
 export async function getRefreshToken() {
   return AsyncStorage.getItem(REFRESH_KEY);
 }
@@ -77,10 +70,7 @@ async function toApiError(res: Response) {
   return new Error(msg);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
- * A안 전환 시 사용할 리프레시 로직 (지금은 비활성화 상태 — 주석 유지)
- * 아래 블록과 apiFetch의 401 처리 블록을 주석 해제하면 A안으로 동작.
- ------------------------------------------------------------------------------
+// ── Refresh logic (A안) ──────────────────────────────────────────────────────
 async function tryRefreshOnce(): Promise<string | null> {
   const [refreshToken, uid] = await Promise.all([getRefreshToken(), getUserId()]);
   if (!refreshToken || !uid) return null;
@@ -94,28 +84,27 @@ async function tryRefreshOnce(): Promise<string | null> {
 
   const json: any = await safeJson(res);
   const newAccess = json?.accessToken as string | undefined;
-  const newRefresh = json?.refreshToken as string | undefined; // 회전(refresh rotation) 시
+  const newRefresh = json?.refreshToken as string | undefined;
   if (!newAccess) return null;
 
   await setAccessToken(newAccess);
   if (newRefresh) await setRefreshToken(newRefresh);
   return newAccess;
 }
-------------------------------------------------------------------------------*/
 
 // ── Public fetch wrapper ─────────────────────────────────────────────────────
 export async function apiFetch(path: string, options: RequestInit = {}) {
-  // B안: accessToken만 붙여 요청하고, 401이어도 여기서는 재발급 시도 X
-  const token = await getAccessToken();
-  const res = await doFetch(path, options, token || undefined);
-  return res;
+  let token = await getAccessToken();
+  let res = await doFetch(path, options, token || undefined);
 
-  /* ── A안 전환 시 아래 401 처리 블록 주석 해제 ─────────────────────────────
-  if (res.status !== 401) return res;
-  const refreshed = await tryRefreshOnce();
-  if (!refreshed) return res;
-  return doFetch(path, options, refreshed);
-  ────────────────────────────────────────────────────────────────────────────*/
+  // 401 Unauthorized 처리: access token 만료 시 refresh 시도
+  if (res.status === 401) {
+    token = await tryRefreshOnce();
+    if (token) {
+      res = await doFetch(path, options, token);
+    }
+  }
+  return res;
 }
 
 // ── Verb helpers (Response 반환) ─────────────────────────────────────────────

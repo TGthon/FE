@@ -3,8 +3,7 @@ import { FlatList, View, Text, Modal, TextInput, Pressable, Alert, Platform } fr
 import EventCard from '../components/EventCard';
 import { useRouter } from 'expo-router';
 import EventRenameModal from '../components/EventRenameModal';
-// ⛔ 백엔드 연결 임시 비활성화
-// import { apiGetJSON, apiPutJSON, apiDeleteJSON, getAccessToken } from '../lib/api';
+import { apiGetJSON, apiPutJSON, apiDeleteJSON, getAccessToken } from '../lib/api';
 
 type EventItem = {
   id: string;
@@ -13,12 +12,6 @@ type EventItem = {
   status: '투표 전' | '투표 완료';
   date?: string;
 };
-
-const MOCK_EVENTS: EventItem[] = [
-  { id: '1', title: '그룹 이름', people: 7, status: '투표 완료', date: '2025.08.07' },
-  { id: '2', title: '맛집 투어', people: 5, status: '투표 전' },
-  { id: '3', title: '부산 ㄱㄱ', people: 3, status: '투표 전' },
-];
 
 export default function EventListScreen() {
   const router = useRouter();
@@ -30,8 +23,7 @@ export default function EventListScreen() {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
 
-  // ⛔ 서버 응답 파싱 유틸은 임시 미사용 (남겨둠)
-/*
+  // 서버 응답 파싱 유틸
   const pickEvents = useCallback((raw: any) => {
     return Array.isArray(raw) ? raw : raw?.events ?? [];
   }, []);
@@ -54,19 +46,22 @@ export default function EventListScreen() {
       })
       .filter(Boolean) as EventItem[];
   }, [pickEvents]);
-*/
 
   const loadEvents = useCallback(async () => {
-    // ⛔ 백엔드/토큰 체크 전부 비활성화
-    // const token = await getAccessToken();
-    // if (!token) { ...router.replace('/'); return; }
-    // const json = await apiGetJSON<any>('/api/event');
-    // const list = normalizeEvents(json);
-    // setData(list);
-
-    // ✅ 프론트 확인용 목업 데이터
-    setData(MOCK_EVENTS);
-  }, []);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        router.replace('/');
+        return;
+      }
+      const json = await apiGetJSON<any>('/api/event');
+      const list = normalizeEvents(json);
+      setData(list);
+    } catch (err: any) {
+      Alert.alert('오류', err?.message ?? '이벤트 목록을 불러오지 못했습니다.');
+      setData([]);
+    }
+  }, [router, normalizeEvents]);
 
   useEffect(() => {
     loadEvents();
@@ -91,46 +86,37 @@ export default function EventListScreen() {
   const applyRename = useCallback(async () => {
     if (!targetId) return;
 
-    // ✅ 로컬(목업)만 즉시 반영
-    setData(prev =>
-      prev.map(it => (it.id === targetId ? { ...it, title: nameInput.trim() || it.title } : it)),
-    );
-    setRenameVisible(false);
-
-    // ⛔ 서버 동기화 비활성화
-    // try {
-    //   await apiPutJSON(`/api/event/${targetId}`, { title: nameInput.trim() });
-    // } catch (err: any) {
-    //   Alert.alert('오류 발생', err?.message ?? '이름 변경에 실패했습니다.');
-    //   await loadEvents();
-    // }
-  }, [targetId, nameInput]);
+    try {
+      await apiPutJSON(`/api/event/${targetId}/name`, { name: nameInput.trim() });
+      await loadEvents();
+      setRenameVisible(false);
+    } catch (err: any) {
+      Alert.alert('오류 발생', err?.message ?? '이름 변경에 실패했습니다.');
+      await loadEvents();
+    }
+  }, [targetId, nameInput, loadEvents]);
 
   const confirmDelete = useCallback((item: EventItem) => {
-    const doLocalRemove = () => setData(prev => prev.filter(it => it.id !== item.id));
-
     const onConfirm = async () => {
-      // ⛔ 서버 삭제 비활성화
-      // try {
-      //   await apiDeleteJSON(`/api/event/${item.id}`);
-      //   doLocalRemove();
-      // } catch (err: any) {
-      //   Alert.alert('오류 발생', err?.message ?? '일정 삭제에 실패했습니다.');
-      // }
-      doLocalRemove();
+      try {
+        await apiDeleteJSON(`/api/event/${item.id}/user/me`);
+        await loadEvents();
+      } catch (err: any) {
+        Alert.alert('오류 발생', err?.message ?? '이벤트 탈퇴에 실패했습니다.');
+      }
     };
 
     if (Platform.OS === 'web') {
-      const ok = window.confirm(`정말 "${item.title}" 일정을 삭제하시겠습니까?`);
+      const ok = window.confirm(`정말 "${item.title}" 이벤트에서 탈퇴하시겠습니까?`);
       if (ok) onConfirm();
       return;
     }
 
-    Alert.alert('일정 삭제', `정말 "${item.title}" 일정을 삭제하시겠습니까?`, [
+    Alert.alert('이벤트 탈퇴', `정말 "${item.title}" 이벤트에서 탈퇴하시겠습니까?`, [
       { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: onConfirm },
+      { text: '탈퇴', style: 'destructive', onPress: onConfirm },
     ]);
-  }, []);
+  }, [loadEvents]);
 
   const renderItem = useCallback(
     ({ item }: { item: EventItem }) => (
@@ -164,7 +150,7 @@ export default function EventListScreen() {
         ItemSeparatorComponent={() => <View style={{ height: 0 }} />}
         ListEmptyComponent={
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ fontSize: 16, color: '#9AA0A6' }}>생성된 일정이 없습니다.</Text>
+            <Text style={{ fontSize: 16, color: '#9AA0A6' }}>생성된 이벤트가 없습니다.</Text>
           </View>
         }
         showsVerticalScrollIndicator={false}
