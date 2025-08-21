@@ -107,7 +107,7 @@ export default function FriendNGroupScreen() {
     }
   };
 
-  
+
 
   const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
@@ -197,7 +197,7 @@ export default function FriendNGroupScreen() {
           </View>
 
 
-          {/* ✅ 새 이벤트 만들기 버튼 */}
+          {/* 새 이벤트 만들기 버튼 */}
           <Pressable
             style={styles.addEventBtn}
             onPress={() => {
@@ -259,7 +259,7 @@ export default function FriendNGroupScreen() {
             ))}
           </View>
 
-          {/* ✅ 새 이벤트 만들기 버튼 */}
+          {/* 새 이벤트 만들기 버튼 */}
           <Pressable
             style={styles.addEventBtn}
             onPress={() => {
@@ -335,7 +335,7 @@ export default function FriendNGroupScreen() {
       {GroupModal()}
       {FriendModal()}
 
-      {/* ✅ 친구추가 모달 */}
+      {/* 친구추가 모달 */}
       <Modal visible={showAddFriendModal} animationType="slide" transparent>
         <Pressable style={styles.overlay} onPress={() => setShowAddFriendModal(false)}>
           <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>

@@ -29,11 +29,13 @@ async function saveSession(data: {
   refreshToken?: string;
   email?: string;
   uid?: number;
+  name?: string;
 }) {
   await AsyncStorage.setItem(ACCESS_KEY, data.accessToken);
   if (data.refreshToken) await AsyncStorage.setItem(REFRESH_KEY, data.refreshToken);
   if (data.email) await AsyncStorage.setItem(USER_EMAIL_KEY, data.email);
-  if (typeof data.uid !== 'undefined') await AsyncStorage.setItem(USER_ID_KEY, String(data.uid)); // ✅
+  if (typeof data.uid !== 'undefined') await AsyncStorage.setItem(USER_ID_KEY, String(data.uid));
+  if (data.name) await AsyncStorage.setItem('userName', data.name);
 }
 
 async function getAccessToken() {
@@ -132,6 +134,7 @@ export default function LoginScreen() {
           refreshToken: data.refreshToken,
           email: data.email,
           uid: data.uid,
+          name: data.name,
         });
 
         router.replace('/calendar');
@@ -176,6 +179,7 @@ export default function LoginScreen() {
           refreshToken: data.refreshToken,
           email: data.email,
           uid: data.uid,
+          name: data.name,
         });
 
         router.replace('/calendar');
