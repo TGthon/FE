@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Image, StyleSheet, Pressable, Alert, Modal } from 'react-native';
+import { View, Text, TextInput, Image, StyleSheet, Pressable, Alert, Modal, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
-
+import * as ImagePicker from 'expo-image-picker';
+import { apiGetJSON } from '../lib/api';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -14,27 +14,122 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [showEmail, setShowEmail] = useState(true);
+  const [loadingPic, setLoadingPic] = useState(false);
 
-  // 사용자 정보 불러오기
+  // 사용자 정보 불러오기 (백엔드 연동)
   useEffect(() => {
     const loadUserInfo = async () => {
-      const storedName = await AsyncStorage.getItem('userName');
-      const storedEmail = await AsyncStorage.getItem('userEmail');
-      const storedPicture = await AsyncStorage.getItem('userPicture');
-      if (storedName) setName(storedName);
-      if (storedEmail) setEmail(storedEmail);
-      if (storedPicture) setPicture(storedPicture);
+      try {
+        const profile = await apiGetJSON('/api/profile/me');
+        setName(profile?.name ?? '');
+        setEmail(profile?.email ?? '');
+        setPicture(profile?.profile_picture ?? '');
+        // 로컬에도 저장
+        await AsyncStorage.setItem('userName', profile?.name ?? '');
+        await AsyncStorage.setItem('userEmail', profile?.email ?? '');
+        await AsyncStorage.setItem('userPicture', profile?.profile_picture ?? '');
+      } catch (err) {
+        // 실패 시 로컬 정보 사용
+        const storedName = await AsyncStorage.getItem('userName');
+        const storedEmail = await AsyncStorage.getItem('userEmail');
+        const storedPicture = await AsyncStorage.getItem('userPicture');
+        if (storedName) setName(storedName);
+        if (storedEmail) setEmail(storedEmail);
+        if (storedPicture) setPicture(storedPicture);
+      }
     };
     loadUserInfo();
   }, []);
 
-  // 이름 수정 저장
+  // 이름 수정 저장 (로컬만, 백엔드 연동 필요시 추가)
   const handleSaveName = async () => {
     const newName = nameInput.trim();
     if (newName) {
       setName(newName);
       await AsyncStorage.setItem('userName', newName);
       setEditName(false);
+      // TODO: 이름 변경 API 연동 필요시 추가
+    }
+  };
+
+  // 프로필 사진 변경
+  const handleChangePicture = async () => {
+    if (Platform.OS === 'web') {
+      // 웹: input file 사용
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e: any) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 1024 * 1024) {
+          Alert.alert('파일 크기 초과', '1MB 이하 이미지만 가능합니다.');
+          return;
+        }
+        setLoadingPic(true);
+        try {
+          const formData = new FormData();
+          formData.append('picture', file);
+          const res = await fetch('https://api.ldh.monster/api/profile/me/picture', {
+            method: 'PUT',
+            body: formData,
+          });
+          const json = await res.json();
+          if (json?.picture) {
+            setPicture(json.picture);
+            await AsyncStorage.setItem('userPicture', json.picture);
+          } else {
+            Alert.alert('업로드 실패', '프로필 사진 변경에 실패했습니다.');
+          }
+        } catch (err) {
+          Alert.alert('업로드 실패', '프로필 사진 변경 중 오류가 발생했습니다.');
+        } finally {
+          setLoadingPic(false);
+        }
+      };
+      input.click();
+    } else {
+      // 모바일: 기존 ImagePicker 코드 그대로
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsEditing: true,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const fileType = asset.type || 'image/jpeg';
+
+      setLoadingPic(true);
+      try {
+        const formData = new FormData();
+        formData.append('picture', {
+          uri,
+          name: 'profile.jpg',
+          type: fileType,
+        } as any);
+
+        const res = await fetch('https://api.ldh.monster/api/profile/me/picture', {
+          method: 'PUT',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'multipart/form-data',
+          },
+          body: formData,
+        });
+        const json = await res.json();
+        if (json?.picture) {
+          setPicture(json.picture);
+          await AsyncStorage.setItem('userPicture', json.picture);
+        } else {
+          Alert.alert('업로드 실패', '프로필 사진 변경에 실패했습니다.');
+        }
+      } catch (err) {
+        Alert.alert('업로드 실패', '프로필 사진 변경 중 오류가 발생했습니다.');
+      } finally {
+        setLoadingPic(false);
+      }
     }
   };
 
@@ -51,7 +146,7 @@ export default function ProfileScreen() {
           'userName',
           'userPicture',
         ]);
-        router.replace('/'); // 로그인 화면으로 이동
+        router.replace('/');
       }
     } else {
       Alert.alert('로그아웃', '정말 로그아웃하시겠어요?', [
@@ -74,16 +169,15 @@ export default function ProfileScreen() {
     }
   };
 
-
   return (
     <View style={styles.container}>
       <View style={styles.profileBox}>
         <View style={styles.avatarWrap}>
           <Image
-            source={{ uri: picture || 'https://via.placeholder.com/120' }}
+            source={{ uri: picture || 'https://api.ldh.monster/images/default.jpg' }}
             style={styles.avatar}
           />
-          <Pressable style={styles.editPicBtn}>
+          <Pressable style={styles.editPicBtn} onPress={handleChangePicture} disabled={loadingPic}>
             <Ionicons name="pencil" size={22} color="#fff" />
           </Pressable>
         </View>
