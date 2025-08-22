@@ -16,16 +16,21 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(event)" options={{ headerShown: false }} />
-        <Stack.Screen name="calendarDetail" options={{ title: '일정 상세' }} />
-        <Stack.Screen name="calendarNew" options={{ title: '새 일정' }} />
-        <Stack.Screen name="calendarEdit" options={{ title: '일정 수정' }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+      <FriendProvider>
+        <GroupProvider>
+          <Stack>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(event)" options={{ headerShown: false }} />
+            <Stack.Screen name="calendarDetail" options={{ title: '일정 상세' }} />
+            <Stack.Screen name="calendarNew" options={{ title: '새 일정' }} />
+            <Stack.Screen name="calendarEdit" options={{ title: '일정 수정' }} />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+        </GroupProvider>      
+      </FriendProvider>
       <StatusBar style="auto" />
     </ThemeProvider>
   );
 }
+
