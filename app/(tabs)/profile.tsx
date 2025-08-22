@@ -21,13 +21,14 @@ export default function ProfileScreen() {
     const loadUserInfo = async () => {
       try {
         const profile = await apiGetJSON('/api/profile/me');
+        console.log(profile);
         setName(profile?.name ?? '');
         setEmail(profile?.email ?? '');
-        setPicture(profile?.profile_picture ?? '');
+        setPicture(profile?.picture ?? '');
         // 로컬에도 저장
         await AsyncStorage.setItem('userName', profile?.name ?? '');
         await AsyncStorage.setItem('userEmail', profile?.email ?? '');
-        await AsyncStorage.setItem('userPicture', profile?.profile_picture ?? '');
+        await AsyncStorage.setItem('userPicture', profile?.picture ?? '');
       } catch (err) {
         // 실패 시 로컬 정보 사용
         const storedName = await AsyncStorage.getItem('userName');
