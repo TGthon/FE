@@ -169,7 +169,7 @@ export default function ProfileScreen() {
       <View style={styles.profileBox}>
         <View style={styles.avatarWrap}>
           <Image
-            source={{ uri: picture || 'https://via.placeholder.com/120' }}
+            source={{ uri: picture || 'https://api.ldh.monster/images/default.jpg' }}
             style={styles.avatar}
           />
           <Pressable style={styles.editPicBtn} onPress={handleChangePicture} disabled={loadingPic}>

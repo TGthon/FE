@@ -44,19 +44,19 @@ export default function FriendNGroupScreen() {
       name: "경희녀들",
       event: "맛집 투어",
       members: [
-        { id: "u1", name: "김서연", email: "test1@gmail.com", avatar: "https://via.placeholder.com/80" },
-        { id: "u2", name: "이윤서", email: "test2@gmail.com", avatar: "https://via.placeholder.com/80" },
-        { id: "u3", name: "황유나", email: "test3@gmail.com", avatar: "https://via.placeholder.com/80" },
+        { id: "u1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+        { id: "u2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+        { id: "u3", name: "황유나", email: "test3@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
       ],
     },
   ]);
 
   const [friends, setFriends] = useState<FriendItem[]>([
-    { id: "u1", name: "김서연", email: "test1@gmail.com", avatar: "https://via.placeholder.com/80" },
-    { id: "u2", name: "이윤서", email: "test2@gmail.com", avatar: "https://via.placeholder.com/80" },
-    { id: "u3", name: "황유나", email: "test3@gmail.com", avatar: "https://via.placeholder.com/80" },
-    { id: "u4", name: "김동희", email: "test4@gmail.com", avatar: "https://via.placeholder.com/80" },
-    { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://via.placeholder.com/80" },
+    { id: "u1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { id: "u2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { id: "u3", name: "황유나", email: "test3@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { id: "u4", name: "김동희", email: "test4@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
   ]);
 
 
