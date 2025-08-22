@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, Alert, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, Modal, ActivityIndicator, Platform } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import EventRenameModal from '../../../components/EventRenameModal';
-import { apiPostJSON } from '../../../lib/api'; // ★ 초대 API 호출
+import { apiPostJSON, apiDeleteJSON } from '../../../lib/api';
 
 /** 투표 스키마 */
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -48,7 +48,11 @@ const FRIENDS: Friend[] = [
 ];
 
 export default function EventDetail() {
-  const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
+  // 파라미터 정규화 (배열 방지)
+  const raw = useLocalSearchParams<{ id?: string | string[]; title?: string | string[] }>();
+  const eventId = Array.isArray(raw.id) ? raw.id[0] : raw.id ?? '';
+  const eventTitle = Array.isArray(raw.title) ? raw.title[0] : raw.title ?? '';
+
   const router = useRouter();
 
   const [selected, setSelected] = useState<string | null>(null);
@@ -68,9 +72,9 @@ export default function EventDetail() {
 
   const applyRename = useCallback(async () => {
     // TODO: 백엔드 연결 시 교체
-    // await apiPutJSON(`/event/${id}/rename`, { title: nameInput.trim()});
+    // await apiPutJSON(`/event/${eventId}/rename`, { title: nameInput.trim()});
     closeRename();
-  }, [id, nameInput]);
+  }, [eventId, nameInput]);
 
   /** 날짜별 집계 */
   const aggByDate = useMemo<Record<string, DayAgg>>(() => {
@@ -92,7 +96,7 @@ export default function EventDetail() {
     Object.values(aggByDate).forEach(c => {
       if (c.impossible === 0) max = Math.max(max, c.preferred);
     });
-    return Math.max(max, 1); // 0 방지
+    return Math.max(max, 1);
   }, [aggByDate]);
 
   /** 선택된 날짜의 카운트 */
@@ -143,7 +147,7 @@ export default function EventDetail() {
 
   /** 선택 인원 초대 요청 */
   const inviteSelected = async () => {
-    if (!id) return;
+    if (!eventId) return;
     if (picked.size === 0) {
       Alert.alert('안내', '초대할 친구를 선택해 주세요.');
       return;
@@ -153,9 +157,7 @@ export default function EventDetail() {
     try {
       const ids = Array.from(picked);
       const results = await Promise.allSettled(
-        ids.map(uid =>
-          apiPostJSON(`/api/event/${id}/user`, { user: uid })
-        )
+        ids.map(uid => apiPostJSON(`/api/event/${eventId}/user`, { user: uid }))
       );
       const ok = results.filter(r => r.status === 'fulfilled').length;
       const fail = results.length - ok;
@@ -176,11 +178,22 @@ export default function EventDetail() {
     }
   };
 
+  /** 이벤트 탈퇴 실행 */
+  const leaveEvent = async () => {
+    try {
+      if (!eventId) throw new Error('이벤트 ID가 없습니다.');
+      await apiDeleteJSON(`/api/event/${eventId}/user/me`);
+      router.back();
+    } catch (e: any) {
+      Alert.alert('실패', e?.message ?? '탈퇴에 실패했습니다.');
+    }
+  };
+
   return (
     <>
       <Stack.Screen
         options={{
-          title: title ?? '이벤트',
+          title: eventTitle || '이벤트',
           headerTitleStyle: { fontSize: 24, fontWeight: '700' },
           headerRight: () => (
             <Pressable
@@ -214,7 +227,7 @@ export default function EventDetail() {
               onPress={() =>
                 router.push({
                   pathname: '/(event)/event/[id]/vote',
-                  params: { id, title },
+                  params: { id: eventId, title: eventTitle },
                 })
               }
             >
@@ -237,7 +250,7 @@ export default function EventDetail() {
                   marking?.customStyles?.text?.color ??
                   (state === 'disabled' ? '#94A3B8' : '#111827');
 
-                const agg = aggByDate[date.dateString];
+                const agg = (aggByDate as any)[date.dateString] as DayAgg | undefined;
                 const showDot = !!agg && agg.impossible === 0 && agg.nonPreferred > 0;
 
                 const CELL_SIZE = 32;
@@ -325,7 +338,7 @@ export default function EventDetail() {
               if (!selected) return;
               router.push({
                 pathname: '/(event)/event/[id]/time',
-                params: { id, title, date: selected },
+                params: { id: eventId, title: eventTitle, date: selected },
               });
             }}
           />
@@ -353,7 +366,7 @@ export default function EventDetail() {
           }}
         >
           <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-            <Text style={{ fontSize: 18, fontWeight: '700' }}>{title ?? '그룹'}</Text>
+            <Text style={{ fontSize: 18, fontWeight: '700' }}>{eventTitle || '그룹'}</Text>
           </View>
 
           <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
@@ -391,7 +404,7 @@ export default function EventDetail() {
             label="그룹 이름 변경"
             onPress={() => {
               setMenuOpen(false);
-              setNameInput(title ?? '');
+              setNameInput(eventTitle ?? '');
               setRenameVisible(true);
             }}
           />
@@ -399,7 +412,7 @@ export default function EventDetail() {
             label="구성원 초대하기"
             onPress={() => {
               setMenuOpen(false);
-              setInviteOpen(true); // ★ 초대 모달 오픈
+              setInviteOpen(true);
             }}
           />
           <MenuItem
@@ -410,28 +423,23 @@ export default function EventDetail() {
             }}
           />
           <MenuItem
-            label="그룹 나가기"
+            label="이벤트 탈퇴"
             destructive
             onPress={() => {
+              setMenuOpen(false);
+
+              if (Platform.OS === 'web') {
+                const ok = window.confirm('정말 이 이벤트에서 탈퇴하시겠습니까?');
+                if (ok) void leaveEvent();
+                return;
+              }
+
               Alert.alert(
-                '그룹 나가기',
-                '정말 이 그룹에서 나가시겠습니까?',
+                '이벤트 탈퇴',
+                '정말 이 이벤트에서 탈퇴하시겠습니까?',
                 [
                   { text: '취소', style: 'cancel' },
-                  {
-                    text: '나가기',
-                    style: 'destructive',
-                    onPress: async () => {
-                      setMenuOpen(false);
-                      try {
-                        // TODO: 실제 API 호출
-                        // await apiDeleteJSON(`/api/group/${id}/leave`);
-                        router.back();
-                      } catch (e: any) {
-                        Alert.alert('실패', e?.message ?? '나가기에 실패했습니다.');
-                      }
-                    },
-                  },
+                  { text: '탈퇴', style: 'destructive', onPress: () => void leaveEvent() },
                 ],
                 { cancelable: true }
               );

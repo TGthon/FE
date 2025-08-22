@@ -345,8 +345,6 @@ function EventRow({ item, onPress }: { item: EventItem; onPress: () => void }) {
         <Text style={{ color: '#111827', fontWeight: '600', marginRight: 6 }}>
           {item.start} - {item.end}
         </Text>
-
-        <Ionicons name="ellipsis-vertical" size={18} color="#111827" />
       </View>
     </Pressable>
   );

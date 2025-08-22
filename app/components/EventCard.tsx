@@ -111,7 +111,7 @@ export default function EventCard({
             style={{ paddingVertical: 12, paddingHorizontal: 14 }}
             android_ripple={{ borderless: false }}
           >
-            <Text style={{ fontSize: 16, color: '#EF4444', fontWeight: '600' }}>그룹 삭제</Text>
+            <Text style={{ fontSize: 16, color: '#EF4444', fontWeight: '600' }}>이벤트 탈퇴</Text>
           </Pressable>
         </View>
       </Modal>
