@@ -9,23 +9,19 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
+  TouchableOpacity,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 const COLOR_PALETTE = [
-  // Pink / Red
   '#F59CA9', '#F43F5E', '#EC4899', '#E11D48',
-  // Orange / Amber
   '#FB923C', '#F59E0B',
-  // Yellow (짙은 톤)
   '#F6D04D',
-  // Green
   '#22C55E', '#10B981', '#65A30D',
-  // Cyan / Blue
   '#06B6D4', '#0EA5E9', '#3B82F6', '#2563EB',
-  // Purple / Violet
   '#8B5CF6', '#7C3AED', '#A855F7',
 ];
 
@@ -33,18 +29,18 @@ export default function CalendarEdit() {
   const router = useRouter();
   const raw = useLocalSearchParams<{
     id?: string | string[];
-    date?: string | string[];     // 'YYYY-MM-DD'
+    date?: string | string[];
     title?: string | string[];
-    start?: string | string[];    // 'HH:mm'
-    end?: string | string[];      // 'HH:mm'
-    member?: string | string[];
+    start?: string | string[];
+    end?: string | string[];
+    member?: string | string[];   // 콤마 구분 문자열일 수 있음
     color?: string | string[];
     note?: string | string[];
   }>();
 
   const getStr = (v?: string | string[]) => (typeof v === 'string' ? v : v?.[0] ?? '');
 
-  // ---- 기존 값 수집 (없으면 합리적인 기본값) ----
+  // ---- 기존 값 수집 ----
   const id      = getStr(raw.id);
   const dateStr = getStr(raw.date);
   const title0  = getStr(raw.title);
@@ -64,16 +60,62 @@ export default function CalendarEdit() {
 
   const baseDate = dateStr || todayStr;
 
-  // ---- 상태 (초기값을 기존 값으로 세팅) ----
+  // 문자열 member → 배열로 변환(“A, B, C”만 분해, “이윤서 외 3명”은 그대로 한 항목)
+  const initialMembers = useMemo(() => {
+    if (!member0) return [];
+    if (member0.includes(' 외 ')) return [member0];
+    return member0.split(',').map(s => s.trim()).filter(Boolean);
+  }, [member0]);
+
+  // ---- 상태 ----
   const [title, setTitle]   = useState(title0);
-  const [member, setMember] = useState(member0);
   const [note, setNote]     = useState(note0);
   const [color, setColor]   = useState(color0);
-
   const [startDT, setStartDT] = useState(() => strToDate(baseDate, start0));
   const [endDT,   setEndDT]   = useState(() => strToDate(baseDate, end0));
 
-  // 저장: 제목/날짜 필수, 종료>시작
+  // 멤버(새 화면과 동일 메커니즘)
+  const [members, setMembers] = useState<string[]>(initialMembers);
+  const [memberInput, setMemberInput] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [friendList, setFriendList] = useState<{ id: string, name: string }[]>([]);
+  const [groupList, setGroupList] = useState<{ id: string, name: string }[]>([]);
+  const [selected, setSelected] = useState<{ id: string, name: string }[]>([]);
+
+  const openSelectModal = async () => {
+    // 실제 API 연동 시 여기서 불러오면 됨
+    setFriendList([
+      { id: 'f1', name: '홍길동' },
+      { id: 'f2', name: '김철수' },
+      { id: 'f3', name: '이영희' },
+    ]);
+    setGroupList([
+      { id: 'g1', name: '스터디모임' },
+      { id: 'g2', name: '동아리' },
+    ]);
+    setSelected([]);
+    setModalVisible(true);
+  };
+
+  const addSelectedMembers = () => {
+    const names = selected.map(s => s.name);
+    setMembers(prev => Array.from(new Set([...prev, ...names])));
+    setModalVisible(false);
+  };
+
+  const addMemberInput = () => {
+    const name = memberInput.trim();
+    if (name && !members.includes(name)) {
+      setMembers([...members, name]);
+      setMemberInput('');
+    }
+  };
+
+  const removeMember = (name: string) => {
+    setMembers(members.filter(m => m !== name));
+  };
+
+  // 저장
   const onSave = async () => {
     if (!title.trim()) {
       Alert.alert('제목을 입력하세요.');
@@ -90,9 +132,8 @@ export default function CalendarEdit() {
     }
 
     // TODO: 실제 수정 API 연동
-    // await api.put('/events/:id', { ...payload })
+    // await api.put(`/events/${id}`, payload)
 
-    // 상세 화면으로 값 갱신해서 되돌아가기
     router.replace({
       pathname: '/calendarDetail',
       params: {
@@ -101,9 +142,9 @@ export default function CalendarEdit() {
         title: title.trim(),
         start: formatTime(startDT),
         end: formatTime(endDT),
-        member: member.trim(),
+        member: members.join(', '), // detail은 문자열로 받으므로 합쳐서 전달
         color,
-        note: note.trim(),
+        note: (note || '').trim(),
       },
     });
   };
@@ -156,20 +197,71 @@ export default function CalendarEdit() {
             />
           </View>
 
-          {/* 멤버 (선택) */}
+          {/* 멤버 (캘린더 New와 동일) */}
           <SectionDivider />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <SectionIcon name="people-outline" />
-            <Text style={{ color: '#6B7280' }}>그룹 또는 친구에서 추가</Text>
+            <Pressable
+              onPress={openSelectModal}
+              style={{
+                backgroundColor: '#F3F4F6',
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 16,
+              }}
+            >
+              <Text style={{ color: '#111827', fontWeight: '600' }}>그룹 또는 친구에서 추가</Text>
+            </Pressable>
           </View>
-          <Input
-            value={member}
-            onChangeText={setMember}
-            placeholder="직접 입력"
-            style={{ marginTop: 8 }}
-          />
 
-          {/* 메모 (선택) */}
+          {/* 직접 입력 + 칩 */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+            <Input
+              value={memberInput}
+              onChangeText={setMemberInput}
+              placeholder="참여자 이름 직접 입력"
+              style={{ flex: 1 }}
+              returnKeyType="done"
+              onSubmitEditing={addMemberInput}
+            />
+            <Pressable
+              onPress={addMemberInput}
+              style={{
+                marginLeft: 8,
+                backgroundColor: '#F43F5E',
+                borderRadius: 16,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700' }}>추가</Text>
+            </Pressable>
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {members.map((name) => (
+              <View
+                key={name}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#F3F4F6',
+                  borderRadius: 16,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  marginRight: 4,
+                  marginBottom: 4,
+                }}
+              >
+                <Text style={{ color: '#111827', fontWeight: '600', marginRight: 6 }}>{name}</Text>
+                <TouchableOpacity onPress={() => removeMember(name)}>
+                  <Ionicons name="close-circle" size={18} color="#F43F5E" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+
+          {/* 메모 */}
           <SectionDivider />
           <SectionIcon name="document-text-outline" />
           <Input
@@ -186,7 +278,7 @@ export default function CalendarEdit() {
           <Text style={{ fontSize: 14, color: '#374151', marginBottom: 6, fontWeight: '600' }}>색상</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
             {COLOR_PALETTE.map((c) => {
-              const selected = c === color;
+              const selectedChip = c === color;
               return (
                 <Pressable
                   key={c}
@@ -195,12 +287,12 @@ export default function CalendarEdit() {
                     width: 34, height: 34, borderRadius: 17,
                     backgroundColor: c,
                     alignItems: 'center', justifyContent: 'center',
-                    borderWidth: selected ? 2 : 0,
-                    borderColor: selected ? '#111827' : 'transparent',
+                    borderWidth: selectedChip ? 2 : 0,
+                    borderColor: selectedChip ? '#111827' : 'transparent',
                     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, elevation: 1,
                   }}
                 >
-                  {selected ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
+                  {selectedChip ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
                 </Pressable>
               );
             })}
@@ -241,12 +333,84 @@ export default function CalendarEdit() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 친구/그룹 선택 모달 (New와 동일) */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: '85%', backgroundColor: '#fff', borderRadius: 18, padding: 18, maxHeight: '80%' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>친구/그룹 선택</Text>
+
+            <ScrollView style={{ maxHeight: 300 }}>
+              <Text style={{ fontWeight: '600', marginBottom: 6 }}>친구</Text>
+              {friendList.length === 0 && <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>친구 없음</Text>}
+              {friendList.map((f) => (
+                <Pressable
+                  key={`friend-${f.id}`}
+                  onPress={() => {
+                    if (selected.some(s => s.id === f.id)) setSelected(selected.filter(s => s.id !== f.id));
+                    else setSelected([...selected, f]);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                >
+                  <Ionicons
+                    name={selected.some(s => s.id === f.id) ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color="#F43F5E"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={{ fontSize: 16 }}>{f.name}</Text>
+                </Pressable>
+              ))}
+
+              <Text style={{ fontWeight: '600', marginTop: 16, marginBottom: 6 }}>그룹</Text>
+              {groupList.length === 0 && <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>그룹 없음</Text>}
+              {groupList.map((g) => (
+                <Pressable
+                  key={`group-${g.id}`}
+                  onPress={() => {
+                    if (selected.some(s => s.id === g.id)) setSelected(selected.filter(s => s.id !== g.id));
+                    else setSelected([...selected, g]);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                >
+                  <Ionicons
+                    name={selected.some(s => s.id === g.id) ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color="#2563EB"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={{ fontSize: 16 }}>{g.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 18 }}>
+              <Pressable
+                onPress={() => setModalVisible(false)}
+                style={{ paddingVertical: 8, paddingHorizontal: 18, borderRadius: 16, backgroundColor: '#F3F4F6', marginRight: 8 }}
+              >
+                <Text style={{ color: '#111827', fontWeight: '600' }}>취소</Text>
+              </Pressable>
+              <Pressable
+                onPress={addSelectedMembers}
+                style={{ paddingVertical: 8, paddingHorizontal: 18, borderRadius: 16, backgroundColor: '#F43F5E' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>추가하기</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
 
 /* ───────── 재사용 컴포넌트 ───────── */
-
 function SectionIcon({ name }: { name: React.ComponentProps<typeof Ionicons>['name'] }) {
   return (
     <View style={{ alignSelf: 'flex-start', marginBottom: 4 }}>
@@ -342,7 +506,6 @@ function DateTimePill({
 }
 
 /* ───────── 유틸 ───────── */
-
 function formatKoreanDate(d: Date) {
   return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 }
