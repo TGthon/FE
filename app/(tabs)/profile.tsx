@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { apiGetJSON } from '../lib/api';
+import { apiGetJSON, apiFetch } from '../lib/api';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -52,10 +52,9 @@ export default function ProfileScreen() {
     }
   };
 
-  // 프로필 사진 변경
+  // 프로필 사진 변경 (apiFetch 사용)
   const handleChangePicture = async () => {
     if (Platform.OS === 'web') {
-      // 웹: input file 사용
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
@@ -70,7 +69,7 @@ export default function ProfileScreen() {
         try {
           const formData = new FormData();
           formData.append('picture', file);
-          const res = await fetch('https://api.ldh.monster/api/profile/me/picture', {
+          const res = await apiFetch('/api/profile/me/picture', {
             method: 'PUT',
             body: formData,
           });
@@ -89,7 +88,6 @@ export default function ProfileScreen() {
       };
       input.click();
     } else {
-      // 모바일: 기존 ImagePicker 코드 그대로
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.8,
@@ -110,12 +108,8 @@ export default function ProfileScreen() {
           type: fileType,
         } as any);
 
-        const res = await fetch('https://api.ldh.monster/api/profile/me/picture', {
+        const res = await apiFetch('/api/profile/me/picture', {
           method: 'PUT',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'multipart/form-data',
-          },
           body: formData,
         });
         const json = await res.json();
@@ -174,7 +168,7 @@ export default function ProfileScreen() {
       <View style={styles.profileBox}>
         <View style={styles.avatarWrap}>
           <Image
-            source={{ uri: picture || 'https://api.ldh.monster/images/default.jpg' }}
+            source={{ uri: picture || 'https://via.placeholder.com/120' }}
             style={styles.avatar}
           />
           <Pressable style={styles.editPicBtn} onPress={handleChangePicture} disabled={loadingPic}>
