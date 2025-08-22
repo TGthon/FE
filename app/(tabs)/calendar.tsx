@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, FlatList, Dimensions } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, Pressable, FlatList, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
+import { apiGetJSON } from '../lib/api';
 
 type CalendarThemeLoose = { [key: string]: any };
 
@@ -11,42 +12,13 @@ type EventItem = {
   title: string;
   start: string;   // 'HH:mm'
   end: string;     // 'HH:mm'
-  color: string;   // ex) '#F59CA9'
-  member?: string; // ← subtitle 대신 member
+  color: string;
+  member?: string;
   note?: string;
 };
+type EventsByDate = Record<string, EventItem[]>;
 
-const EVENTS: Record<string, EventItem[]> = {
-  '2025-08-17': [
-    { id: 'e1', title: '티지톤 회의', start: '10:00', end: '11:00', color: '#F59CA9', member: '티지톤', note: '회의 안건 정리하기' },
-    { id: 'e2', title: '아르바이트', start: '13:00', end: '18:00', color: '#F6D04D' },
-    { id: 'e3', title: '저녁 약속', start: '18:00', end: '20:00', color: '#8B5CF6', member: '이윤서 외 3명' },
-  ],
-  '2025-08-10': [{ id: 'a', title: '프로젝트 미팅', start: '15:00', end: '16:00', color: '#F59CA9' }],
-  '2025-08-11': [{ id: 'b', title: '리서치', start: '14:00', end: '16:00', color: '#F6D04D' }],
-  '2025-08-25': [
-    { id: 'c', title: '스터디', start: '19:00', end: '21:00', color: '#3B82F6' },
-    { id: 'd', title: '운동', start: '07:30', end: '08:30', color: '#3B82F6' },
-  ],
-  '2025-08-26': [{ id: 'e', title: '회의', start: '10:00', end: '11:30', color: '#3B82F6' }],
-  '2025-08-03': [{ id: 'f', title: '친구 생파', start: '18:00', end: '22:00', color: '#F59CA9' }],
-  '2025-08-18': [
-    { id: 'g', title: '점심 미팅', start: '12:30', end: '13:30', color: '#F6D04D' },
-    { id: 'h', title: '발표 준비', start: '16:00', end: '18:00', color: '#F59CA9' },
-    { id: 'i', title: '달리기', start: '06:30', end: '07:10', color: '#10B981' },
-  ],
-};
-
-const todayStr = () => {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
-const DEFAULT_DATE = todayStr();
-
+/* ─ UI 테마 ─ */
 const CAL_THEME: CalendarThemeLoose = {
   calendarBackground: '#FFFFFF',
   monthTextColor: '#111827',
@@ -65,16 +37,140 @@ const CAL_THEME: CalendarThemeLoose = {
   selectedDotColor: '#FFFFFF',
 };
 
+/* ─ 유틸 ─ */
+const todayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+function formatLong(dateStr: string) {
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+function ymOf(dateStr: string) {
+  const [y, m] = dateStr.split('-').map(Number);
+  return { year: y, month: m };
+}
+const toYMD = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+};
+const toHM = (d: Date) => {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+/* ─ 폴백(네트워크 실패 시) ─ */
+const FALLBACK_EVENTS: EventsByDate = {
+  '2025-08-17': [
+    { id: 'e1', title: '티지톤 회의', start: '10:00', end: '11:00', color: '#F59CA9', member: '티지톤', note: '회의 안건 정리하기' },
+  ],
+};
+
+/* ─ 백엔드 스키마 정규화 ─
+   입력: [
+     {
+       start: <seconds>,
+       end: <seconds>,
+       name: string,
+       groupName?: string,
+       users?: string[],
+       color?: string
+     }, ...
+   ]
+   출력: { 'YYYY-MM-DD': EventItem[] }
+*/
+function normalizeFromBackend(list: any[]): EventsByDate {
+  const map: EventsByDate = {};
+  list.forEach((raw, idx) => {
+    const startSec = Number(raw?.start ?? 0);
+    const endSec = Number(raw?.end ?? 0);
+    if (!startSec || !endSec) return;
+
+    const startDate = new Date(startSec * 1000);
+    const endDate = new Date(endSec * 1000);
+
+    const date = toYMD(startDate);
+    const title = String(raw?.name ?? '제목없음');
+    const color = String(raw?.color ?? '#3B82F6');
+
+    // member 표기: groupName 우선, 없으면 users 배열 요약
+    let member: string | undefined;
+    if (raw?.groupName) {
+      member = String(raw.groupName);
+    } else if (Array.isArray(raw?.users) && raw.users.length > 0) {
+      member =
+        raw.users.length <= 2
+          ? raw.users.join(', ')
+          : `${raw.users[0]} 외 ${raw.users.length - 1}명`;
+    }
+
+    const item: EventItem = {
+      id: String(raw?.id ?? `${startSec}-${idx}`),
+      title,
+      start: toHM(startDate),
+      end: toHM(endDate),
+      color,
+      member,
+    };
+
+    if (!map[date]) map[date] = [];
+    map[date].push(item);
+  });
+  return map;
+}
+
 export default function CalendarHome() {
   const router = useRouter();
-  const [selected, setSelected] = useState<string>(DEFAULT_DATE);
-  const { height: winH } = Dimensions.get('window');
-  const LIST_MAX_H = Math.max(180, Math.round(winH * 0.4)); // “오늘의 일정” 영역만 스크롤
+  const [selected, setSelected] = useState<string>(todayStr());
+  const [eventsByDate, setEventsByDate] = useState<EventsByDate>({});
+  const [loading, setLoading] = useState(false);
 
-  // 달력 점 + 선택 상태
+  const { height: winH } = Dimensions.get('window');
+  const LIST_MAX_H = Math.max(180, Math.round(winH * 0.4));
+
+  // 선택된 날짜의 연/월 기준으로 캘린더 요청
+  useEffect(() => {
+    const { year, month } = ymOf(selected);
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const qs = `?year=${year}&month=${month}`;
+        const payload = await apiGetJSON<any>(`/api/calendar${qs}`);
+
+        // 백엔드가 배열로 내려줌(위 스키마)
+        const normalized =
+          Array.isArray(payload) ? normalizeFromBackend(payload) : {};
+
+        if (!cancelled) setEventsByDate(normalized);
+      } catch (e) {
+        console.warn('GET /api/calendar 실패, 폴백 사용:', e);
+        if (!cancelled) setEventsByDate(FALLBACK_EVENTS);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  // 점/선택 표시
   const markedDates = useMemo(() => {
     const m: Record<string, any> = {};
-    Object.entries(EVENTS).forEach(([date, list]) => {
+    Object.entries(eventsByDate).forEach(([date, list]) => {
       const dots = list.slice(0, 5).map((ev, idx) => ({
         key: `${ev.id}-${idx}`,
         color: ev.color,
@@ -91,13 +187,12 @@ export default function CalendarHome() {
       };
     }
     return m;
-  }, [selected]);
+  }, [eventsByDate, selected]);
 
-  // 오늘의 일정
   const dayEvents = useMemo(() => {
-    const arr = EVENTS[selected] ?? [];
+    const arr = eventsByDate[selected] ?? [];
     return [...arr].sort((a, b) => (a.start < b.start ? -1 : 1));
-  }, [selected]);
+  }, [eventsByDate, selected]);
 
   const headerTitle = selected ? formatLong(selected) : '날짜를 선택하세요';
 
@@ -124,10 +219,7 @@ export default function CalendarHome() {
           title: '내 일정',
           headerTitleStyle: { fontSize: 24, fontWeight: '800', color: '#000000ff' },
           headerStyle: { backgroundColor: '#ffffff' },
-          headerRight: () => (
-            <View style={{ marginRight: 24 }}>
-            </View>
-          ),
+          headerRight: () => <View style={{ marginRight: 24 }} />,
         }}
       />
 
@@ -154,8 +246,9 @@ export default function CalendarHome() {
             }}
           >
             <Text style={{ fontSize: 18, fontWeight: '700' }}>{headerTitle}</Text>
+
             <Pressable
-              onPress={() => { router.push({ pathname: '/calendarNew', params: { date: selected } }) }}
+              onPress={() => router.push({ pathname: '/calendarNew', params: { date: selected } })}
               style={{
                 width: 36, height: 36, borderRadius: 18,
                 borderWidth: 2, borderColor: '#9CA3AF',
@@ -167,18 +260,30 @@ export default function CalendarHome() {
             </Pressable>
           </View>
 
-          <Calendar
-            current={selected}
-            markingType="multi-dot"
-            markedDates={markedDates}
-            onDayPress={(d) => setSelected(d.dateString)}
-            theme={CAL_THEME}
-            style={{
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: '#E5E7EB',
-            }}
-          />
+          <View style={{ position: 'relative' }}>
+            <Calendar
+              current={selected}
+              markingType="multi-dot"
+              markedDates={markedDates}
+              onDayPress={(d) => setSelected(d.dateString)}
+              theme={CAL_THEME}
+              style={{ borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB' }}
+            />
+            {loading && (
+              <View
+                style={{
+                  position: 'absolute', top: 8, right: 8,
+                  paddingHorizontal: 8, paddingVertical: 4,
+                  borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.9)',
+                  borderWidth: 1, borderColor: '#E5E7EB',
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                }}
+              >
+                <ActivityIndicator size="small" />
+                <Text style={{ fontSize: 12, color: '#374151' }}>불러오는 중…</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* 오늘의 일정(이 영역만 스크롤) */}
@@ -190,7 +295,7 @@ export default function CalendarHome() {
           <FlatList
             data={dayEvents}
             keyExtractor={(item) => item.id}
-            style={{ maxHeight: LIST_MAX_H }}
+            style={{ maxHeight: Math.max(180, Math.round(Dimensions.get('window').height * 0.4)) }}
             contentContainerStyle={{ paddingBottom: 12, gap: 10 }}
             renderItem={({ item }) => <EventRow item={item} onPress={() => openDetail(item)} />}
             ListEmptyComponent={
@@ -206,7 +311,7 @@ export default function CalendarHome() {
   );
 }
 
-// “오늘의 일정” 한 줄 (전체가 버튼)
+/* Row */
 function EventRow({ item, onPress }: { item: EventItem; onPress: () => void }) {
   return (
     <Pressable onPress={onPress}>
@@ -221,7 +326,6 @@ function EventRow({ item, onPress }: { item: EventItem; onPress: () => void }) {
           backgroundColor: '#F8FAFC',
         }}
       >
-        {/* 왼쪽 컬러 라벨(제목) */}
         <View
           style={{
             backgroundColor: item.color,
@@ -234,12 +338,10 @@ function EventRow({ item, onPress }: { item: EventItem; onPress: () => void }) {
           <Text style={{ fontWeight: '800', color: '#fff' }}>{item.title}</Text>
         </View>
 
-        {/* 가운데: 멤버/장소 등 */}
         <View style={{ flex: 1 }}>
           {item.member ? <Text style={{ color: '#6B7280' }}>{item.member}</Text> : null}
         </View>
 
-        {/* 시간 */}
         <Text style={{ color: '#111827', fontWeight: '600', marginRight: 6 }}>
           {item.start} - {item.end}
         </Text>
@@ -248,13 +350,4 @@ function EventRow({ item, onPress }: { item: EventItem; onPress: () => void }) {
       </View>
     </Pressable>
   );
-}
-
-function formatLong(dateStr: string) {
-  try {
-    const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
 }
