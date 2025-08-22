@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, Alert, Modal } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, Modal, ActivityIndicator } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import EventRenameModal from '../../../components/EventRenameModal';
+import { apiPostJSON } from '../../../lib/api'; // ★ 초대 API 호출
 
 /** 투표 스키마 */
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -36,6 +37,16 @@ const VOTES: Vote[] = [
   { userId: 'u3', date: '2025-08-20', status: 'non-preferred' },
 ];
 
+/** 더미 친구 목록(백엔드 완성 전까지 사용) */
+type Friend = { id: string; name: string };
+const FRIENDS: Friend[] = [
+  { id: '1001', name: '황유나' },
+  { id: '1002', name: '이윤서' },
+  { id: '1003', name: '김동희' },
+  { id: '1004', name: '김서연' },
+  { id: '1005', name: '이동현' },
+];
+
 export default function EventDetail() {
   const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
   const router = useRouter();
@@ -49,6 +60,11 @@ export default function EventDetail() {
   const [renameVisible, setRenameVisible] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const closeRename = () => setRenameVisible(false);
+
+  // 초대 모달
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [inviting, setInviting] = useState(false);
 
   const applyRename = useCallback(async () => {
     // TODO: 백엔드 연결 시 교체
@@ -85,7 +101,7 @@ export default function EventDetail() {
     return aggByDate[selected];
   }, [selected, aggByDate]);
 
-  /** 달력 마킹(배경/텍스트만; 노란 점은 dayComponent에서 계산) */
+  /** 달력 마킹 */
   const markedDates = useMemo(() => {
     const result: Record<string, any> = {};
     Object.entries(aggByDate).forEach(([date, c]) => {
@@ -98,7 +114,6 @@ export default function EventDetail() {
       };
     });
 
-    // 집계가 없는 날짜를 선택했을 때 시각적 테두리만 표시(배경/글자색은 기본)
     if (selected && !result[selected]) {
       result[selected] = {
         customStyles: {
@@ -115,6 +130,51 @@ export default function EventDetail() {
   }, []);
 
   const headerTitle = selected ? formatLong(selected) : '날짜를 선택하세요';
+
+  /** 초대 토글 */
+  const togglePick = (uid: string) => {
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  /** 선택 인원 초대 요청 */
+  const inviteSelected = async () => {
+    if (!id) return;
+    if (picked.size === 0) {
+      Alert.alert('안내', '초대할 친구를 선택해 주세요.');
+      return;
+    }
+
+    setInviting(true);
+    try {
+      const ids = Array.from(picked);
+      const results = await Promise.allSettled(
+        ids.map(uid =>
+          apiPostJSON(`/api/event/${id}/user`, { user: uid })
+        )
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      const fail = results.length - ok;
+
+      if (ok > 0 && fail === 0) {
+        Alert.alert('완료', `${ok}명 초대했어요.`);
+        setInviteOpen(false);
+        setPicked(new Set());
+      } else if (ok > 0 && fail > 0) {
+        Alert.alert('부분 완료', `${ok}명은 초대했고, ${fail}명은 실패했어요.`);
+      } else {
+        Alert.alert('실패', '초대에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (e: any) {
+      Alert.alert('실패', e?.message ?? '초대 중 오류가 발생했어요.');
+    } finally {
+      setInviting(false);
+    }
+  };
 
   return (
     <>
@@ -168,16 +228,7 @@ export default function EventDetail() {
               markingType="custom"
               markedDates={markedDates}
               onDayPress={onDayPress}
-              /** 우하단 노란 점 & 선택 테두리 렌더링 */
-              dayComponent={({
-                date,
-                state,
-                marking,
-              }: {
-                date?: DateData;
-                state?: string;
-                marking?: any;
-              }) => {
+              dayComponent={({ date, state, marking }: { date?: DateData; state?: string; marking?: any }) => {
                 if (!date) return <View style={{ width: 32, height: 32 }} />;
 
                 const isSelected = selected === date.dateString;
@@ -186,11 +237,9 @@ export default function EventDetail() {
                   marking?.customStyles?.text?.color ??
                   (state === 'disabled' ? '#94A3B8' : '#111827');
 
-                // 노란 점 조건: 비선호 1명 이상 && 불가능 0명
                 const agg = aggByDate[date.dateString];
                 const showDot = !!agg && agg.impossible === 0 && agg.nonPreferred > 0;
 
-                // 배치/크기 상수
                 const CELL_SIZE = 32;
                 const BUBBLE_SIZE = 28;
                 const DOT_SIZE = 7;
@@ -226,7 +275,6 @@ export default function EventDetail() {
                       </Text>
                     </View>
 
-                    {/* 노란 점: 셀 우하단, 원 바깥으로 살짝 이동 (흰 테두리 제거) */}
                     {showDot && (
                       <View
                         pointerEvents="none"
@@ -261,7 +309,7 @@ export default function EventDetail() {
           </View>
         </View>
 
-        {/* 투표 상태 집계 (선택된 날짜 기준) */}
+        {/* 투표 상태 집계 */}
         <View style={{ gap: 10 }}>
           <StatusRow label="Preferred" color="#FCA5A5" count={`${counts.preferred}명`} />
           <StatusRow label="Non-preferred" color="#FACC15" count={`${counts.nonPreferred}명`} />
@@ -284,20 +332,9 @@ export default function EventDetail() {
         </View>
       </ScrollView>
 
-      {/* ====== 그룹 메뉴 모달 (화면 전체 오버레이) ====== */}
-      <Modal
-        visible={menuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuOpen(false)}
-      >
-        {/* 반투명 오버레이 */}
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }}
-          onPress={() => setMenuOpen(false)}
-        />
-
-        {/* 패널 */}
+      {/* ====== 그룹 메뉴 모달 ====== */}
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }} onPress={() => setMenuOpen(false)} />
         <View
           style={{
             position: 'absolute',
@@ -315,12 +352,10 @@ export default function EventDetail() {
             elevation: 10,
           }}
         >
-          {/* 상단: 그룹명 */}
           <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
             <Text style={{ fontSize: 18, fontWeight: '700' }}>{title ?? '그룹'}</Text>
           </View>
 
-          {/* 구성원 리스트 (목업) */}
           <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
             <Text style={{ marginBottom: 10, color: '#374151' }}>구성원 5명</Text>
             {[
@@ -352,7 +387,6 @@ export default function EventDetail() {
             ))}
           </View>
 
-          {/* 하단 버튼들 */}
           <MenuItem
             label="그룹 이름 변경"
             onPress={() => {
@@ -365,7 +399,7 @@ export default function EventDetail() {
             label="구성원 초대하기"
             onPress={() => {
               setMenuOpen(false);
-              Alert.alert('TODO', '초대하기 UI로 이동');
+              setInviteOpen(true); // ★ 초대 모달 오픈
             }}
           />
           <MenuItem
@@ -406,7 +440,7 @@ export default function EventDetail() {
         </View>
       </Modal>
 
-      {/* ====== 이름 변경 모달 (분리 컴포넌트 재사용) ====== */}
+      {/* 이름 변경 모달 */}
       <EventRenameModal
         visible={renameVisible}
         value={nameInput}
@@ -414,29 +448,123 @@ export default function EventDetail() {
         onCancel={closeRename}
         onSave={applyRename}
       />
+
+      {/* 초대 모달 */}
+      <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }} onPress={() => setInviteOpen(false)} />
+        <View
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            top: 120,
+            backgroundColor: '#fff',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#E5E7EB',
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>친구 초대</Text>
+
+          {/* 친구 리스트(멀티 선택) */}
+          <View style={{ maxHeight: 320, paddingVertical: 4 }}>
+            {FRIENDS.map(f => {
+              const active = picked.has(f.id);
+              return (
+                <Pressable
+                  key={f.id}
+                  onPress={() => togglePick(f.id)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 10,
+                    paddingHorizontal: 8,
+                    borderRadius: 8,
+                    backgroundColor: pressed ? '#F9FAFB' : '#fff',
+                  })}
+                >
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: active ? '#F43F5E' : '#CBD5E1',
+                      marginRight: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: active ? '#FEE2E2' : '#fff',
+                    }}
+                  >
+                    {active ? <Ionicons name="checkmark" size={18} color="#F43F5E" /> : null}
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 16 }}>{f.name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* 하단 버튼 */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+            <Pressable
+              onPress={() => setInviteOpen(false)}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 12,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: '#111827',
+                backgroundColor: pressed ? '#F3F4F6' : '#fff',
+                alignItems: 'center',
+                justifyContent: 'center',
+              })}
+            >
+              <Text style={{ fontWeight: '700', color: '#111827' }}>취소</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={inviteSelected}
+              disabled={picked.size === 0 || inviting}
+              style={({ pressed }) => ({
+                flex: 1,
+                paddingVertical: 12,
+                borderRadius: 10,
+                backgroundColor: picked.size === 0 ? '#FECACA' : pressed ? '#fb7185' : '#F43F5E',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: inviting ? 0.7 : 1,
+              })}
+            >
+              {inviting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={{ fontWeight: '700', color: '#fff' }}>
+                  초대하기{picked.size ? ` (${picked.size})` : ''}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
 
-/** 색상 계산 규칙 (요구 사항)
- * - impossible ≥ 1 → 회색 배경(#CBD5E1)
- * - 그 외: "선호 인원 수"만으로 흰색↔진분홍 보간
- *   ratio = preferred / maxPreferred
- */
+/** 색상 규칙 */
 function computeDayColor(c: DayAgg, maxPreferred: number) {
   if (c.impossible > 0) {
-    return { bg: '#CBD5E1', text: '#111827' }; // 회색
+    return { bg: '#CBD5E1', text: '#111827' };
   }
   if (maxPreferred <= 0 || c.preferred <= 0) {
-    return { bg: '#FFFFFF', text: '#111827' }; // 투표 없음/선호 0 → 흰색
+    return { bg: '#FFFFFF', text: '#111827' };
   }
-  const ratio = Math.max(0, Math.min(1, c.preferred / maxPreferred)); // 0..1 clamp
-  const bg = mixHex('#FFFFFF', '#F43F5E', ratio); // 흰 → 진분홍
-  const text = ratio > 0.65 ? '#FFFFFF' : '#111827'; // 어두워지면 흰 글자
+  const ratio = Math.max(0, Math.min(1, c.preferred / maxPreferred));
+  const bg = mixHex('#FFFFFF', '#F43F5E', ratio);
+  const text = ratio > 0.65 ? '#FFFFFF' : '#111827';
   return { bg, text };
 }
 
-/** HEX 색 보간(0~1) */
 function mixHex(hexA: string, hexB: string, t: number) {
   const a = hexToRgb(hexA);
   const b = hexToRgb(hexB);
