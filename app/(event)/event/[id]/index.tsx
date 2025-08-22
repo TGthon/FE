@@ -423,6 +423,39 @@ export default function EventDetail() {
             }}
           />
           <MenuItem
+            label = "이벤트 확정"
+            important
+            onPress={() => {
+              setMenuOpen(false);
+
+              if (Platform.OS === 'web') {
+                const ok = window.confirm('이 이벤트를 확정하시겠습니까? 확정 후 수정이 불가능합니다.');
+                if (ok) {
+                  router.push({
+                    pathname: '/(event)/event/[id]/finalize',
+                    params: { id: eventId, title: eventTitle },
+                  });
+                }
+                return;
+              }
+
+              Alert.alert(
+                '이벤트 확정',
+                '이 이벤트를 확정하시겠습니까? 확정 후 수정이 불가능합니다.',
+                [
+                  { text: '취소', style: 'cancel' },
+                  { text: '확정', style: 'default', onPress: () => {
+                    router.push({
+                      pathname: '/(event)/event/[id]/finalize',
+                      params: { id: eventId, title: eventTitle},
+                    });
+                  }},
+                ],
+                { cancelable: true }
+              );
+            }}
+          />
+          <MenuItem
             label="이벤트 탈퇴"
             destructive
             onPress={() => {
@@ -623,10 +656,12 @@ function MenuItem({
   label,
   onPress,
   destructive,
+  important,
 }: {
   label: string;
   onPress: () => void;
   destructive?: boolean;
+  important?: boolean;
 }) {
   return (
     <Pressable
@@ -639,7 +674,7 @@ function MenuItem({
         backgroundColor: pressed ? '#F9FAFB' : '#fff',
       })}
     >
-      <Text style={{ fontSize: 15, color: destructive ? '#DC2626' : '#111827', fontWeight: destructive ? '700' : '400' }}>
+      <Text style={{ fontSize: 15, color: destructive ? '#DC2626' : important? 'green': '#111827', fontWeight: destructive ? '700' : important? '700': '400' }}>
         {label}
       </Text>
     </Pressable>
