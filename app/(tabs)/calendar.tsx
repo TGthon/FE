@@ -125,9 +125,6 @@ export default function CalendarHome() {
           headerTitleStyle: { fontSize: 24, fontWeight: '800' },
           headerRight: () => (
             <View style={{ marginRight: 24 }}>
-              <Pressable hitSlop={8} onPress={() => {}}>
-                <Ionicons name="notifications-outline" size={32} color="#111827" />
-              </Pressable>
             </View>
           ),
         }}
