@@ -1,41 +1,32 @@
-import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, Alert, Modal, ActivityIndicator, Platform } from 'react-native';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { View, Text, Pressable, ScrollView, Alert, Modal, ActivityIndicator, Platform, Image } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import EventRenameModal from '../../../components/EventRenameModal';
-import { apiPostJSON, apiDeleteJSON } from '../../../lib/api';
+import { apiPostJSON, apiDeleteJSON, apiGetJSON } from '../../../lib/api';
 
-/** 투표 스키마 */
+/** 투표 스키마 (화면 내부용) */
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
 type Vote = { userId: string; date: string; status: VoteStatus };
 
 type DayAgg = { preferred: number; nonPreferred: number; impossible: number; total: number };
 
-/** 목업 투표 데이터 (YYYY-MM-DD) — 백엔드 연결 시 교체 */
-const VOTES: Vote[] = [
-  { userId: 'u1', date: '2025-08-07', status: 'preferred' },
-  { userId: 'u2', date: '2025-08-07', status: 'preferred' },
-  { userId: 'u3', date: '2025-08-07', status: 'non-preferred' },
-  { userId: 'u4', date: '2025-08-07', status: 'impossible' },
-
-  { userId: 'u1', date: '2025-08-12', status: 'preferred' },
-  { userId: 'u2', date: '2025-08-12', status: 'preferred' },
-  { userId: 'u3', date: '2025-08-12', status: 'preferred' },
-
-  { userId: 'u2', date: '2025-08-14', status: 'non-preferred' },
-  { userId: 'u3', date: '2025-08-14', status: 'non-preferred' },
-  { userId: 'u4', date: '2025-08-14', status: 'non-preferred' },
-
-  { userId: 'u1', date: '2025-08-17', status: 'preferred' },
-  { userId: 'u2', date: '2025-08-17', status: 'preferred' },
-  { userId: 'u3', date: '2025-08-17', status: 'non-preferred' },
-
-  { userId: 'u1', date: '2025-08-20', status: 'preferred' },
-  { userId: 'u2', date: '2025-08-20', status: 'non-preferred' },
-  { userId: 'u3', date: '2025-08-20', status: 'non-preferred' },
-];
+/** GET /api/event/:id 응답 타입 */
+type ApiVote = {
+  uid: number;
+  picture: string;
+  type: 'P' | 'N' | 'I';
+  date: number; // seconds
+};
+type ApiUser = { uid: number; picture: string };
+type EventResp = {
+  eventid: number;
+  title: string;
+  votes: ApiVote[];
+  users: ApiUser[];
+};
 
 /** 더미 친구 목록(백엔드 완성 전까지 사용) */
 type Friend = { id: string; name: string };
@@ -51,7 +42,7 @@ export default function EventDetail() {
   // 파라미터 정규화 (배열 방지)
   const raw = useLocalSearchParams<{ id?: string | string[]; title?: string | string[] }>();
   const eventId = Array.isArray(raw.id) ? raw.id[0] : raw.id ?? '';
-  const eventTitle = Array.isArray(raw.title) ? raw.title[0] : raw.title ?? '';
+  const titleFromParam = Array.isArray(raw.title) ? raw.title[0] : raw.title ?? '';
 
   const router = useRouter();
 
@@ -70,16 +61,60 @@ export default function EventDetail() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [inviting, setInviting] = useState(false);
 
+  // API 로드 상태 & 데이터
+  const [loadingEvent, setLoadingEvent] = useState(false);
+  const [fetchedTitle, setFetchedTitle] = useState<string>(titleFromParam);
+  const [members, setMembers] = useState<ApiUser[]>([]);
+  const [votes, setVotes] = useState<Vote[]>([]); // 화면 집계용
+
+  // 이벤트 상세 불러오기
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+
+    (async () => {
+      setLoadingEvent(true);
+      try {
+        const data = await apiGetJSON<EventResp>(`/api/event/${eventId}`);
+
+        if (cancelled) return;
+
+        // 제목
+        if (data?.title) setFetchedTitle(data.title);
+
+        // 구성원
+        setMembers(Array.isArray(data?.users) ? data.users : []);
+
+        // 투표 → 화면용으로 매핑
+        const mapped: Vote[] = (data?.votes ?? []).map((v) => ({
+          userId: String(v.uid),
+          date: toYMD(new Date(v.date * 1000)),
+          status: v.type === 'P' ? 'preferred' : v.type === 'N' ? 'non-preferred' : 'impossible',
+        }));
+        setVotes(mapped);
+      } catch (e) {
+        console.warn('GET /api/event/:id 실패', e);
+        // 실패 시엔 그냥 비워두기(기존 집계는 0으로 처리됨)
+      } finally {
+        if (!cancelled) setLoadingEvent(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
+
   const applyRename = useCallback(async () => {
     // TODO: 백엔드 연결 시 교체
     // await apiPutJSON(`/event/${eventId}/rename`, { title: nameInput.trim()});
     closeRename();
   }, [eventId, nameInput]);
 
-  /** 날짜별 집계 */
+  /** 날짜별 집계 (API 투표 기반) */
   const aggByDate = useMemo<Record<string, DayAgg>>(() => {
     const m: Record<string, DayAgg> = {};
-    for (const v of VOTES) {
+    for (const v of votes) {
       const key = v.date;
       if (!m[key]) m[key] = { preferred: 0, nonPreferred: 0, impossible: 0, total: 0 };
       if (v.status === 'preferred') m[key].preferred += 1;
@@ -88,12 +123,12 @@ export default function EventDetail() {
       m[key].total += 1;
     }
     return m;
-  }, []);
+  }, [votes]);
 
   /** 분홍 강도 스케일 기준치: (불가능 없는 날들 중) 선호 최댓값 */
   const maxPreferred = useMemo(() => {
     let max = 0;
-    Object.values(aggByDate).forEach(c => {
+    Object.values(aggByDate).forEach((c) => {
       if (c.impossible === 0) max = Math.max(max, c.preferred);
     });
     return Math.max(max, 1);
@@ -137,7 +172,7 @@ export default function EventDetail() {
 
   /** 초대 토글 */
   const togglePick = (uid: string) => {
-    setPicked(prev => {
+    setPicked((prev) => {
       const next = new Set(prev);
       if (next.has(uid)) next.delete(uid);
       else next.add(uid);
@@ -156,10 +191,8 @@ export default function EventDetail() {
     setInviting(true);
     try {
       const ids = Array.from(picked);
-      const results = await Promise.allSettled(
-        ids.map(uid => apiPostJSON(`/api/event/${eventId}/user`, { user: uid }))
-      );
-      const ok = results.filter(r => r.status === 'fulfilled').length;
+      const results = await Promise.allSettled(ids.map((uid) => apiPostJSON(`/api/event/${eventId}/user`, { user: uid })));
+      const ok = results.filter((r) => r.status === 'fulfilled').length;
       const fail = results.length - ok;
 
       if (ok > 0 && fail === 0) {
@@ -193,14 +226,10 @@ export default function EventDetail() {
     <>
       <Stack.Screen
         options={{
-          title: eventTitle || '이벤트',
+          title: fetchedTitle || '이벤트',
           headerTitleStyle: { fontSize: 24, fontWeight: '700' },
           headerRight: () => (
-            <Pressable
-              onPress={() => setMenuOpen(true)}
-              hitSlop={8}
-              style={{ paddingHorizontal: 8, paddingVertical: 4 }}
-            >
+            <Pressable onPress={() => setMenuOpen(true)} hitSlop={8} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
               <Ionicons name="menu" size={28} color="#111827" />
             </Pressable>
           ),
@@ -227,7 +256,7 @@ export default function EventDetail() {
               onPress={() =>
                 router.push({
                   pathname: '/(event)/event/[id]/vote',
-                  params: { id: eventId, title: eventTitle },
+                  params: { id: eventId, title: fetchedTitle },
                 })
               }
             >
@@ -236,7 +265,7 @@ export default function EventDetail() {
           </View>
 
           {/* 실제 달력 */}
-          <View style={{ padding: 12 }}>
+          <View style={{ padding: 12, position: 'relative' }}>
             <Calendar
               markingType="custom"
               markedDates={markedDates}
@@ -247,8 +276,7 @@ export default function EventDetail() {
                 const isSelected = selected === date.dateString;
                 const bg = marking?.customStyles?.container?.backgroundColor ?? 'transparent';
                 const textColor =
-                  marking?.customStyles?.text?.color ??
-                  (state === 'disabled' ? '#94A3B8' : '#111827');
+                  marking?.customStyles?.text?.color ?? (state === 'disabled' ? '#94A3B8' : '#111827');
 
                 const agg = (aggByDate as any)[date.dateString] as DayAgg | undefined;
                 const showDot = !!agg && agg.impossible === 0 && agg.nonPreferred > 0;
@@ -319,6 +347,28 @@ export default function EventDetail() {
                 textDayFontSize: 14,
               }}
             />
+
+            {loadingEvent && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(255,255,255,0.9)',
+                  borderWidth: 1,
+                  borderColor: '#E5E7EB',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <ActivityIndicator size="small" />
+                <Text style={{ fontSize: 12, color: '#374151' }}>불러오는 중…</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -338,7 +388,7 @@ export default function EventDetail() {
               if (!selected) return;
               router.push({
                 pathname: '/(event)/event/[id]/time',
-                params: { id: eventId, title: eventTitle, date: selected },
+                params: { id: eventId, title: fetchedTitle, date: selected },
               });
             }}
           />
@@ -366,19 +416,14 @@ export default function EventDetail() {
           }}
         >
           <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-            <Text style={{ fontSize: 18, fontWeight: '700' }}>{eventTitle || '그룹'}</Text>
+            <Text style={{ fontSize: 18, fontWeight: '700' }}>{fetchedTitle || '그룹'}</Text>
           </View>
 
+          {/* 구성원 리스트 (API users 기반) */}
           <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-            <Text style={{ marginBottom: 10, color: '#374151' }}>구성원 5명</Text>
-            {[
-              { name: '황유나', note: '(나)' },
-              { name: '이윤서', note: '(그룹장)' },
-              { name: '김동희' },
-              { name: '김서연' },
-              { name: '이동현' },
-            ].map((m, idx) => (
-              <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ marginBottom: 10, color: '#374151' }}>구성원 {members.length}명</Text>
+            {members.map((u) => (
+              <View key={u.uid} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <View
                   style={{
                     width: 28,
@@ -389,22 +434,27 @@ export default function EventDetail() {
                     marginRight: 8,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    overflow: 'hidden',
+                    backgroundColor: '#fff',
                   }}
                 >
-                  <Text>👤</Text>
+                  {u.picture ? (
+                    <Image source={{ uri: u.picture }} style={{ width: 28, height: 28 }} />
+                  ) : (
+                    <Text>👤</Text>
+                  )}
                 </View>
-                <Text style={{ fontSize: 14 }}>
-                  {m.name} {m.note ?? ''}
-                </Text>
+                <Text style={{ fontSize: 14 }}>사용자 {u.uid}</Text>
               </View>
             ))}
+            {members.length === 0 && <Text style={{ color: '#9CA3AF' }}>구성원 정보가 없습니다.</Text>}
           </View>
 
           <MenuItem
             label="그룹 이름 변경"
             onPress={() => {
               setMenuOpen(false);
-              setNameInput(eventTitle ?? '');
+              setNameInput(fetchedTitle ?? '');
               setRenameVisible(true);
             }}
           />
@@ -423,7 +473,7 @@ export default function EventDetail() {
             }}
           />
           <MenuItem
-            label = "이벤트 확정"
+            label="이벤트 확정"
             important
             onPress={() => {
               setMenuOpen(false);
@@ -433,7 +483,7 @@ export default function EventDetail() {
                 if (ok) {
                   router.push({
                     pathname: '/(event)/event/[id]/finalize',
-                    params: { id: eventId, title: eventTitle },
+                    params: { id: eventId, title: fetchedTitle },
                   });
                 }
                 return;
@@ -444,12 +494,15 @@ export default function EventDetail() {
                 '이 이벤트를 확정하시겠습니까? 확정 후 수정이 불가능합니다.',
                 [
                   { text: '취소', style: 'cancel' },
-                  { text: '확정', style: 'default', onPress: () => {
-                    router.push({
-                      pathname: '/(event)/event/[id]/finalize',
-                      params: { id: eventId, title: eventTitle},
-                    });
-                  }},
+                  {
+                    text: '확정',
+                    style: 'default',
+                    onPress: () =>
+                      router.push({
+                        pathname: '/(event)/event/[id]/finalize',
+                        params: { id: eventId, title: fetchedTitle },
+                      }),
+                  },
                 ],
                 { cancelable: true }
               );
@@ -482,15 +535,9 @@ export default function EventDetail() {
       </Modal>
 
       {/* 이름 변경 모달 */}
-      <EventRenameModal
-        visible={renameVisible}
-        value={nameInput}
-        onChangeText={setNameInput}
-        onCancel={closeRename}
-        onSave={applyRename}
-      />
+      <EventRenameModal visible={renameVisible} value={nameInput} onChangeText={setNameInput} onCancel={closeRename} onSave={applyRename} />
 
-      {/* 초대 모달 */}
+      {/* 초대 모달 (더미 친구 목록 기반) */}
       <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }} onPress={() => setInviteOpen(false)} />
         <View
@@ -510,7 +557,7 @@ export default function EventDetail() {
 
           {/* 친구 리스트(멀티 선택) */}
           <View style={{ maxHeight: 320, paddingVertical: 4 }}>
-            {FRIENDS.map(f => {
+            {FRIENDS.map((f) => {
               const active = picked.has(f.id);
               return (
                 <Pressable
@@ -577,13 +624,7 @@ export default function EventDetail() {
                 opacity: inviting ? 0.7 : 1,
               })}
             >
-              {inviting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ fontWeight: '700', color: '#fff' }}>
-                  초대하기{picked.size ? ` (${picked.size})` : ''}
-                </Text>
-              )}
+              {inviting ? <ActivityIndicator color="#fff" /> : <Text style={{ fontWeight: '700', color: '#fff' }}>초대하기{picked.size ? ` (${picked.size})` : ''}</Text>}
             </Pressable>
           </View>
         </View>
@@ -616,11 +657,11 @@ function mixHex(hexA: string, hexB: string, t: number) {
 }
 function hexToRgb(hex: string) {
   const h = hex.replace('#', '');
-  const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  const bigint = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
   return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
 }
 function rgbToHex(r: number, g: number, b: number) {
-  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
 }
 
 /** 라벨 포맷: Mon, Aug 17 */
@@ -631,6 +672,14 @@ function formatLong(dateStr: string) {
   } catch {
     return dateStr;
   }
+}
+
+/** YYYY-MM-DD */
+function toYMD(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function StatusRow({ label, color, count }: { label: string; color: string; count: string }) {
@@ -674,7 +723,13 @@ function MenuItem({
         backgroundColor: pressed ? '#F9FAFB' : '#fff',
       })}
     >
-      <Text style={{ fontSize: 15, color: destructive ? '#DC2626' : important? 'green': '#111827', fontWeight: destructive ? '700' : important? '700': '400' }}>
+      <Text
+        style={{
+          fontSize: 15,
+          color: destructive ? '#DC2626' : important ? 'green' : '#111827',
+          fontWeight: destructive ? '700' : important ? '700' : '400',
+        }}
+      >
         {label}
       </Text>
     </Pressable>
@@ -706,9 +761,7 @@ function OutlineButton({
         opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
       })}
     >
-      <Text style={{ color: disabled ? '#F5B7BA' : '#F45F62', fontWeight: '700' }}>
-        {title}
-      </Text>
+      <Text style={{ color: disabled ? '#F5B7BA' : '#F45F62', fontWeight: '700' }}>{title}</Text>
     </Pressable>
   );
 }
