@@ -122,7 +122,8 @@ export default function CalendarHome() {
       <Stack.Screen
         options={{
           title: '내 일정',
-          headerTitleStyle: { fontSize: 24, fontWeight: '800' },
+          headerTitleStyle: { fontSize: 24, fontWeight: '800', color: '#000000ff' },
+          headerStyle: { backgroundColor: '#ffffff' },
           headerRight: () => (
             <View style={{ marginRight: 24 }}>
             </View>

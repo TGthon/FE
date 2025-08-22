@@ -70,7 +70,8 @@ export default function TabLayout() {
           title: '내 일정',
           headerShown: true,
           headerTitleAlign: 'left',
-          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold', color: '#000000ff'},
+          headerStyle: { backgroundColor: '#ffffff' },
           tabBarIcon: ({ focused }) => (
             <View style={{
               flex: 1,
@@ -91,7 +92,8 @@ export default function TabLayout() {
           title: '이벤트',
           headerShown: true,
           headerTitleAlign: 'left',
-          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold', color: '#000000ff'},
+          headerStyle: { backgroundColor: '#ffffff' },
           tabBarIcon: ({ focused }) => (
             <View style={{
               flex: 1,
@@ -112,7 +114,8 @@ export default function TabLayout() {
           title: '이벤트 추가',
           headerShown: true,
           headerTitleAlign: 'left',
-          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold', color: '#000000ff'},
+          headerStyle: { backgroundColor: '#ffffff' },
           tabBarIcon: ({ focused }) => (
             <View style={{
               flex: 1,
@@ -133,7 +136,8 @@ export default function TabLayout() {
           title: '친구 및 그룹',
           headerShown: true,
           headerTitleAlign: 'left',
-          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold', color: '#000000ff'},
+          headerStyle: { backgroundColor: '#ffffff' },
           tabBarIcon: ({ focused }) => (
             <View style={{
               flex: 1,
@@ -154,7 +158,8 @@ export default function TabLayout() {
           title: '프로필',
           headerShown: true,
           headerTitleAlign: 'left',
-          headerTitleStyle: {fontSize: 24, fontWeight: 'bold'},
+          headerTitleStyle: {fontSize: 24, fontWeight: 'bold', color: '#000000ff'},
+          headerStyle: { backgroundColor: '#ffffff' },
           tabBarIcon: ({ focused }) => (
             <View style={{
               flex: 1,
