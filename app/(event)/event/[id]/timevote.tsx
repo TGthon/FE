@@ -1,12 +1,15 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   Dimensions,
-  GestureResponderEvent,
   Pressable,
   Alert,
+  StyleSheet,
+  PixelRatio,
+  PanResponder,
+  GestureResponderEvent,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -16,6 +19,9 @@ type CellKey = string; // 'HH:mm'
 
 /** 헬퍼: string | string[] | undefined → string | undefined */
 const s = (v?: string | string[]) => (typeof v === 'string' ? v : v?.[0]);
+
+/** 픽셀 반올림 유틸 */
+const rn = (n: number) => Math.max(1, Math.floor(PixelRatio.roundToNearestPixel(n)));
 
 export default function TimeVoteScreen() {
   const router = useRouter();
@@ -30,16 +36,16 @@ export default function TimeVoteScreen() {
 
   const { height: winH, width: winW } = Dimensions.get('window');
 
-  /** 화면에 24줄이 보이도록 자동 높이 */
+  /** 화면에 24줄이 보이도록 자동 높이 (안드로이드 픽셀 반올림 포함) */
   const RESERVED_H = 220;
   const availableH = Math.max(200, winH - RESERVED_H);
-  const ROW_H = Math.max(16, Math.floor(availableH / 24));
+  const ROW_H = rn(Math.max(16, Math.floor(availableH / 24)));
 
   /** 30분 → 한 행 2칸, 중앙 정렬용 폭 계산 */
-  const HOUR_W = 44;
-  const CELL_W = Math.floor((winW * 0.9 - HOUR_W) / 2);
-  const GRID_W = HOUR_W + CELL_W * 2;
-  const CELL_AREA_W = CELL_W * 2;
+  const HOUR_W = rn(48);
+  const CELL_W = rn((winW * 0.9 - HOUR_W) / 2);
+  const GRID_W = rn(HOUR_W + CELL_W * 2);
+  const CELL_AREA_W = rn(CELL_W * 2);
 
   /** 모드 (가능/불가능) */
   const [mode, setMode] = useState<VoteMode>('possible');
@@ -49,8 +55,31 @@ export default function TimeVoteScreen() {
 
   /** 드래그/토글 제어 */
   const dragging = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
   const dragMode = useRef<VoteMode>('possible');
   const appliedDuringDrag = useRef<Set<CellKey>>(new Set());
+
+  /** 터치영역 절대좌표(measure) */
+  const touchAreaRef = useRef<View>(null);
+  const measureRef = useRef({ px: 0, py: 0, w: 0, h: 0 });
+
+  const doMeasure = useCallback(() => {
+    // measure는 레이아웃 후 호출 필요
+    touchAreaRef.current?.measure?.((_x, _y, w, h, px, py) => {
+      measureRef.current = { px: px ?? 0, py: py ?? 0, w: w ?? 0, h: h ?? 0 };
+    });
+  }, []);
+
+  const onTouchAreaLayout = useCallback(() => {
+    // 레이아웃 직후/회전 등에서 재측정
+    requestAnimationFrame(doMeasure);
+    setTimeout(doMeasure, 0);
+  }, [doMeasure]);
+
+  useEffect(() => {
+    const id = setTimeout(doMeasure, 50);
+    return () => clearTimeout(id);
+  }, [winW, winH, doMeasure]);
 
   const keyOf = (row: number, col: number) => `${pad(row)}:${col === 0 ? '00' : '30'}`;
 
@@ -67,50 +96,61 @@ export default function TimeVoteScreen() {
     });
   }, []);
 
-  /** 좌표(x,y)를 셀 인덱스로 변환 */
-  const pointToCell = useCallback(
+  /** pageX/Y → 셀 인덱스 변환 (안드로이드 신뢰용) */
+  const eventToCell = useCallback(
     (e: GestureResponderEvent) => {
-      const { locationX, locationY } = e.nativeEvent; // 셀 영역 기준
-      const row = Math.floor(locationY / ROW_H);
-      const col = Math.floor(locationX / CELL_W);
+      const { pageX, pageY } = e.nativeEvent;
+      const { px, py } = measureRef.current;
+      const relX = Math.max(0, pageX - px);
+      const relY = Math.max(0, pageY - py);
+      const row = Math.floor(relY / ROW_H);
+      const col = Math.floor(relX / CELL_W);
       return { row, col };
     },
     [ROW_H, CELL_W]
   );
 
-  /** 제스처 핸들러 */
-  const onGrant = useCallback(
-    (e: GestureResponderEvent) => {
-      dragging.current = true;
-      dragMode.current = mode;
-      appliedDuringDrag.current.clear();
+  /** 제스처 핸들러: PanResponder로 ScrollView와 충돌 방지 */
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          dragging.current = true;
+          setIsDragging(true);
+          dragMode.current = mode;
+          appliedDuringDrag.current.clear();
 
-      const { row, col } = pointToCell(e);
-      const key = keyOf(row, col);
-      if (!appliedDuringDrag.current.has(key)) {
-        appliedDuringDrag.current.add(key);
-        toggleApplyAt(row, col, dragMode.current);
-      }
-    },
-    [mode, pointToCell, toggleApplyAt]
+          const { row, col } = eventToCell(evt);
+          const key = keyOf(row, col);
+          if (!appliedDuringDrag.current.has(key)) {
+            appliedDuringDrag.current.add(key);
+            toggleApplyAt(row, col, dragMode.current);
+          }
+        },
+        onPanResponderMove: (evt) => {
+          if (!dragging.current) return;
+          const { row, col } = eventToCell(evt);
+          const key = keyOf(row, col);
+          if (appliedDuringDrag.current.has(key)) return;
+          appliedDuringDrag.current.add(key);
+          toggleApplyAt(row, col, dragMode.current);
+        },
+        onPanResponderRelease: () => {
+          dragging.current = false;
+          setIsDragging(false);
+          appliedDuringDrag.current.clear();
+        },
+        onPanResponderTerminate: () => {
+          dragging.current = false;
+          setIsDragging(false);
+          appliedDuringDrag.current.clear();
+        },
+        onShouldBlockNativeResponder: () => true,
+      }),
+    [mode, eventToCell, toggleApplyAt]
   );
-
-  const onMove = useCallback(
-    (e: GestureResponderEvent) => {
-      if (!dragging.current) return;
-      const { row, col } = pointToCell(e);
-      const key = keyOf(row, col);
-      if (appliedDuringDrag.current.has(key)) return; // 같은 제스처 내 1회 처리
-      appliedDuringDrag.current.add(key);
-      toggleApplyAt(row, col, dragMode.current);
-    },
-    [pointToCell, toggleApplyAt]
-  );
-
-  const onRelease = useCallback(() => {
-    dragging.current = false;
-    appliedDuringDrag.current.clear();
-  }, []);
 
   /** 셀 배경 색: 내 선택만 반영 (가능=핑크, 불가능=회색, 미선택=흰색) */
   const fillFor = useCallback(
@@ -155,7 +195,6 @@ export default function TimeVoteScreen() {
         options={{
           title: (title ?? '시간 투표') + ' • 투표',
           headerTitleStyle: { fontSize: 22, fontWeight: '800' },
-          /** 상단 오른쪽: 투표하기 (알약 버튼) */
           headerRight: () => (
             <Pressable
               onPress={handleSubmit}
@@ -177,6 +216,8 @@ export default function TimeVoteScreen() {
       <ScrollView
         style={{ flex: 1, backgroundColor: '#fff' }}
         contentContainerStyle={{ paddingBottom: 24, alignItems: 'center' }}
+        scrollEnabled={!isDragging}
+        keyboardShouldPersistTaps="handled"
       >
         {/* 상단: 날짜 + 모드 토글 */}
         <View
@@ -223,11 +264,11 @@ export default function TimeVoteScreen() {
 
           {/* 셀 영역 (터치/드래그 처리) */}
           <View
+            ref={touchAreaRef}
+            collapsable={false}            // Android measure 안정화
+            onLayout={onTouchAreaLayout}
+            {...panResponder.panHandlers}  // PanResponder 연결
             style={{ width: CELL_AREA_W }}
-            onStartShouldSetResponder={() => true}
-            onResponderGrant={onGrant}
-            onResponderMove={onMove}
-            onResponderRelease={onRelease}
           >
             {keys.map(([k00, k30], rowIdx) => (
               <View key={rowIdx} style={{ flexDirection: 'row' }}>
@@ -264,15 +305,16 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
   };
 
   return (
-    <View style={{ flexDirection: 'row', gap: 12 }}>
+    <View style={{ flexDirection: 'row' }}>
       <Pressable
         onPress={() => onChange('possible')}
         style={({ pressed }) => ({
           ...base,
-          backgroundColor: '#F5BFC5', // 연핑크
+          backgroundColor: '#F5BFC5',
           borderWidth: mode === 'possible' ? 2 : 0,
           borderColor: '#111827',
           opacity: pressed ? 0.9 : 1,
+          marginRight: 12, // gap 대체 (안드로이드 호환)
         })}
       >
         <Text
@@ -291,7 +333,7 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
         onPress={() => onChange('impossible')}
         style={({ pressed }) => ({
           ...base,
-          backgroundColor: '#D9DDE2', // 연회색
+          backgroundColor: '#D9DDE2',
           borderWidth: mode === 'impossible' ? 2 : 0,
           borderColor: '#111827',
           opacity: pressed ? 0.9 : 1,
@@ -312,7 +354,7 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
   );
 }
 
-/** 셀: 칠해진 칸이면 선을 흰색(#FFF)으로 */
+/** 셀: 칠해진 칸이면 선을 흰색(#FFF)으로, Hairline로 이음새 최소화 */
 function Cell({ width, height, color }: { width: number; height: number; color: string }) {
   const isFilled = color !== '#FFFFFF';
   return (
@@ -320,7 +362,10 @@ function Cell({ width, height, color }: { width: number; height: number; color: 
       style={{
         width,
         height,
-        borderWidth: 1,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        borderRightWidth: StyleSheet.hairlineWidth,
+        borderBottomWidth: StyleSheet.hairlineWidth,
         borderColor: isFilled ? '#FFFFFF' : '#D1D5DB',
         backgroundColor: color,
       }}

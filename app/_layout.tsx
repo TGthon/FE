@@ -8,7 +8,7 @@ import { GroupProvider } from "./context/GroupContext";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
-export default function RootLayout() {
+export default function Layout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
@@ -18,7 +18,10 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <SafeAreaView 
+        style={{ flex: 1, backgroundColor: '#fff' }}
+        edges={['bottom']}
+      >
         <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
           <FriendProvider>
             <GroupProvider>
