@@ -193,11 +193,27 @@ export default function FriendNGroupScreen() {
       {
         text: "삭제",
         style: "destructive",
-        onPress: () => {
-          setFriends((prev) => prev.filter((f) => f.id !== friendId));
-          setSelectedFriend(null);
+        onPress: async () => {
+          try {
+            // 백엔드에 삭제 요청
+            const token = await getAccessToken();
+            await fetch(`https://api.ldh.monster/api/friends/${friendId}`, {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+
+            });
+
+            // 프론트 상태에서도 제거
+            setFriends((prev) => prev.filter((f) => f.id !== friendId));
+            setSelectedFriend(null);
+          } catch (error) {
+            Alert.alert("오류", "친구 삭제 중 문제가 발생했어요.");
+            console.error("삭제 실패:", error);
+          }
         },
-      },
+      }
     ]);
   };
 
