@@ -142,6 +142,7 @@ export default function EventListScreen() {
   return (
     <>
       <FlatList
+        style={{ backgroundColor: 'white' }}
         data={data}
         extraData={data}
         renderItem={renderItem}
