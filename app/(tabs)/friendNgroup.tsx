@@ -1,5 +1,4 @@
-// app/(tabs)/friendNgroup.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -31,6 +30,37 @@ type GroupItem = {
 };
 
 export default function FriendNGroupScreen() {
+  useEffect(() => {
+    const fetchFriends = async () => {
+      const token = await getAccessToken();
+      console.log("보내는 토큰:", token);
+      if (!token) {
+        console.warn("토큰 없음: 로그인 필요");
+        return;
+      }
+
+      try {
+        const res = await fetch("https://api.ldh.monster/api/friends/list", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+        if (!res.ok) {
+          const text = await res.text(); // HTML 에러 페이지일 수 있음
+          throw new Error(`서버 오류: ${res.status}\n${text}`);
+        }
+
+        const data = await res.json();
+        setFriends(data.friends); // 프론트 상태에 저장
+      } catch (error) {
+        console.error("친구 목록 불러오기 실패:", error);
+      }
+    };
+
+    fetchFriends();
+  }, []);
+
   const router = useRouter();
 
   // 친구/그룹 데이터
@@ -65,6 +95,7 @@ export default function FriendNGroupScreen() {
 
   const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
+
 
   // 그룹 추가
   const handleAddGroup = () => {
@@ -105,7 +136,7 @@ export default function FriendNGroupScreen() {
     ]);
   };
 
-
+  // 친구 추가
   const handleAddFriend = async () => {
     if (!newFriendEmail.trim()) {
       Alert.alert("실패", "이메일을 입력해주세요.");
