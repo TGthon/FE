@@ -9,14 +9,11 @@ import {
   Image,
   StyleSheet,
   Alert,
-  TextInput
+  TextInput,
+  ScrollView,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-
-import { getAccessToken } from "../lib/api";
-
-
 
 type FriendItem = {
   id: string;
@@ -35,9 +32,7 @@ type GroupItem = {
 export default function FriendNGroupScreen() {
   const router = useRouter();
 
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
-  const [newFriendEmail, setNewFriendEmail] = useState("");
-
+  // 친구/그룹 데이터
   const [groups, setGroups] = useState<GroupItem[]>([
     {
       id: "g1",
@@ -59,6 +54,55 @@ export default function FriendNGroupScreen() {
     { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
   ]);
 
+  // 모달 상태
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [newFriendEmail, setNewFriendEmail] = useState("");
+
+  const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+
+  const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
+  const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
+
+  // 그룹 추가
+  const handleAddGroup = () => {
+    if (!newGroupName.trim()) {
+      Alert.alert("실패", "그룹명을 입력해주세요.");
+      return;
+    }
+    if (selectedMembers.length === 0) {
+      Alert.alert("실패", "멤버를 최소 1명 선택해주세요.");
+      return;
+    }
+
+    const newGroup: GroupItem = {
+      id: Date.now().toString(),
+      name: newGroupName,
+      members: friends.filter((f) => selectedMembers.includes(f.id)),
+    };
+
+    setGroups((prev) => [...prev, newGroup]);
+    setNewGroupName("");
+    setSelectedMembers([]);
+    setShowAddGroupModal(false);
+    Alert.alert("성공", "새 그룹이 추가되었습니다.");
+  };
+
+  // 그룹 나가기
+  const handleLeaveGroup = (groupId: string) => {
+    Alert.alert("그룹 나가기", "정말 이 그룹을 나가시겠습니까?", [
+      { text: "취소", style: "cancel" },
+      {
+        text: "나가기",
+        style: "destructive",
+        onPress: () => {
+          setGroups((prev) => prev.filter((g) => g.id !== groupId));
+          setSelectedGroup(null);
+        },
+      },
+    ]);
+  };
 
 
   const handleAddFriend = async () => {
@@ -108,24 +152,7 @@ export default function FriendNGroupScreen() {
   };
 
 
-
-  const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
-  const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
-
-  const handleLeaveGroup = (groupId: string) => {
-    Alert.alert("그룹 나가기", "정말 이 그룹을 나가시겠습니까?", [
-      { text: "취소", style: "cancel" },
-      {
-        text: "나가기",
-        style: "destructive",
-        onPress: () => {
-          setGroups((prev) => prev.filter((g) => g.id !== groupId));
-          setSelectedGroup(null);
-        },
-      },
-    ]);
-  };
-
+  // 친구 삭제
   const handleDeleteFriend = (friendId: string) => {
     Alert.alert("친구 삭제", "정말 이 친구를 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
@@ -140,26 +167,16 @@ export default function FriendNGroupScreen() {
     ]);
   };
 
-
   // 그룹 상세 팝업
   const GroupModal = () => (
     <Modal visible={!!selectedGroup} animationType="slide" transparent>
-      {/* 바깥 회색 배경 */}
       <Pressable style={styles.overlay} onPress={() => setSelectedGroup(null)}>
-
-        {/* 안쪽 박스 (닫힘 방지) */}
-        <Pressable
-          style={styles.modalBox}
-          onPress={(e) => e.stopPropagation()}  // 👈 클릭 이벤트 전파 막기
-        >
-          {/* 헤더 */}
+        <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{selectedGroup?.name}</Text>
-            <Pressable onPress={() => selectedGroup &&
-              handleLeaveGroup(selectedGroup!.id)}>
+            <Pressable onPress={() => selectedGroup && handleLeaveGroup(selectedGroup.id)}>
               <MaterialCommunityIcons name="exit-to-app" size={24} color="black" />
             </Pressable>
-
           </View>
 
           {/* 이벤트 이름 → 상세 페이지 이동 */}
@@ -179,7 +196,7 @@ export default function FriendNGroupScreen() {
             </Pressable>
           )}
 
-          {/* 멤버 리스트 (2명씩 배치) */}
+          {/* 멤버 리스트 */}
           <View style={styles.memberGrid}>
             {selectedGroup?.members.map((m) => (
               <Pressable
@@ -195,18 +212,6 @@ export default function FriendNGroupScreen() {
               </Pressable>
             ))}
           </View>
-
-
-          {/* 새 이벤트 만들기 버튼 */}
-          <Pressable
-            style={styles.addEventBtn}
-            onPress={() => {
-              setSelectedGroup(null); // 팝업 닫고
-              router.push("/(tabs)/newevent"); // 같은 폴더의 newevent.tsx 로 이동
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>새 이벤트 만들기</Text>
-          </Pressable>
         </Pressable>
       </Pressable>
     </Modal>
@@ -217,57 +222,61 @@ export default function FriendNGroupScreen() {
     <Modal visible={!!selectedFriend} animationType="slide" transparent>
       <Pressable style={styles.overlay} onPress={() => setSelectedFriend(null)}>
         <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
-          {/* 헤더 */}
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{selectedFriend?.name}</Text>
-            <Pressable onPress={() => selectedFriend && handleDeleteFriend(selectedFriend!.id)}>
+            <Pressable onPress={() => selectedFriend && handleDeleteFriend(selectedFriend.id)}>
               <MaterialCommunityIcons name="trash-can-outline" size={24} color="black" />
             </Pressable>
-
           </View>
-
-          {/* 이메일 */}
           <Text style={styles.subText}>{selectedFriend?.email}</Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 
-          {/* 참여 이벤트 리스트 */}
-          <View style={{ marginTop: 12 }}>
-            {[
-              { id: "2", title: "맛집 투어", date: "07-27 오전 1:00" },
-              { id: "3", title: "스터디 모임", date: "07-29 오후 8:00" },
-            ].map((ev) => (
+  // 그룹 추가 모달
+  const GroupAddModal = () => (
+    <Modal visible={showAddGroupModal} animationType="slide" transparent>
+      <Pressable style={styles.overlay} onPress={() => setShowAddGroupModal(false)}>
+        <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.modalTitle}>그룹 추가</Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="그룹명 입력"
+            value={newGroupName}
+            onChangeText={setNewGroupName}
+          />
+
+          <ScrollView style={{ maxHeight: 200, marginVertical: 12 }}>
+            {friends.map((f) => (
               <Pressable
-                key={ev.id}
+                key={f.id}
+                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
                 onPress={() => {
-                  setSelectedFriend(null);
-                  router.push({
-                    pathname: "../(event)/event/[id]",
-                    params: { id: ev.id, title: ev.title },
-                  });
+                  setSelectedMembers((prev) =>
+                    prev.includes(f.id) ? prev.filter((id) => id !== f.id) : [...prev, f.id]
+                  );
                 }}
-                style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}
               >
-                <MaterialCommunityIcons
-                  name="calendar"
-                  size={20}
-                  color="#6B7280"
-                  style={{ marginRight: 6 }}
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    marginRight: 8,
+                    borderRadius: 4,
+                    borderWidth: 1,
+                    borderColor: "#9CA3AF",
+                    backgroundColor: selectedMembers.includes(f.id) ? "#2563EB" : "transparent",
+                  }}
                 />
-                <Text style={{ fontSize: 15, color: "#F45F62", fontWeight: "600" }}>
-                  {ev.title} ({ev.date})
-                </Text>
+                <Text>{f.name}</Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
 
-          {/* 새 이벤트 만들기 버튼 */}
-          <Pressable
-            style={styles.addEventBtn}
-            onPress={() => {
-              setSelectedGroup(null); // 팝업 닫고
-              router.push("/(tabs)/newevent"); // 같은 폴더의 newevent.tsx 로 이동
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>새 이벤트 만들기</Text>
+          <Pressable style={styles.addEventBtn} onPress={handleAddGroup}>
+            <Text style={{ color: "#fff", fontWeight: "600" }}>그룹 만들기</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -276,8 +285,13 @@ export default function FriendNGroupScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff", padding: 16 }}>
-      {/* 그룹 리스트 */}
-      <Text style={styles.sectionTitle}>그룹</Text>
+      {/* 그룹 리스트 + 추가 버튼 */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={styles.sectionTitle}>그룹</Text>
+        <Pressable style={styles.addFriendBtn} onPress={() => setShowAddGroupModal(true)}>
+          <Text style={{ color: "#fff", fontWeight: "600" }}>그룹 추가</Text>
+        </Pressable>
+      </View>
       <FlatList
         data={groups}
         renderItem={({ item }) => (
@@ -296,30 +310,13 @@ export default function FriendNGroupScreen() {
         keyExtractor={(item) => item.id}
       />
 
-      {/* 친구 리스트 */}
-      {/* <Text style={[styles.sectionTitle, { marginTop: 24 }]}>친구</Text> */}
-      {/* <FlatList
-        data={friends}
-        renderItem={({ item }) => (
-          <Pressable style={styles.friendCard} onPress={() => setSelectedFriend(item)}>
-            <Image source={{ uri: item.avatar }} style={styles.avatarSmall} />
-            <Text style={{ marginLeft: 12 }}>{item.name}</Text>
-          </Pressable>
-        )}
-        keyExtractor={(item) => item.id}
-      />
-
-      {/* 친구 리스트 + 친구추가 버튼 */}
+      {/* 친구 리스트 + 추가 버튼 */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24 }}>
         <Text style={styles.sectionTitle}>친구</Text>
-        <Pressable
-          style={styles.addFriendBtn}
-          onPress={() => setShowAddFriendModal(true)}
-        >
+        <Pressable style={styles.addFriendBtn} onPress={() => setShowAddFriendModal(true)}>
           <Text style={{ color: "#fff", fontWeight: "600" }}>친구 추가</Text>
         </Pressable>
       </View>
-
       <FlatList
         data={friends}
         renderItem={({ item }) => (
@@ -331,11 +328,11 @@ export default function FriendNGroupScreen() {
         keyExtractor={(item) => item.id}
       />
 
-
       {GroupModal()}
       {FriendModal()}
+      {GroupAddModal()}
 
-      {/* 친구추가 모달 */}
+      {/* 기존 친구추가 모달 */}
       <Modal visible={showAddFriendModal} animationType="slide" transparent>
         <Pressable style={styles.overlay} onPress={() => setShowAddFriendModal(false)}>
           <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
@@ -358,7 +355,7 @@ export default function FriendNGroupScreen() {
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 18, fontWeight: "700" as const },
+  sectionTitle: { fontSize: 18, fontWeight: "700" },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
@@ -428,7 +425,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
   },
-
   addFriendBtn: {
     backgroundColor: "#F45F62",
     paddingHorizontal: 12,
@@ -443,4 +439,3 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
-
