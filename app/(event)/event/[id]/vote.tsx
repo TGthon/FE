@@ -145,7 +145,7 @@ export default function VoteScreen() {
     <>
       <Stack.Screen
         options={{
-          title: title ? `${title} • 투표` : '투표',
+          title: '날짜 투표',
           headerTitleStyle: { fontSize: 20, fontWeight: '700' },
           headerRight: () => headerRight,
         }}

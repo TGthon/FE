@@ -193,7 +193,7 @@ export default function TimeVoteScreen() {
     <>
       <Stack.Screen
         options={{
-          title: (title ?? '시간 투표') + ' • 투표',
+          title: '시간 투표',
           headerTitleStyle: { fontSize: 22, fontWeight: '800' },
           headerRight: () => (
             <Pressable
@@ -290,40 +290,51 @@ export default function TimeVoteScreen() {
   );
 }
 
-/** 사진 같은 카드 스타일의 모드 선택
- *  선택 안 된 버튼은 글자 회색, 선택되면 검정색
- */
 function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode) => void }) {
-  const base = {
-    minWidth: 100,
-    height: 32,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 16,
+  // 정수 픽셀로 버튼 치수 보정
+  const BTN_MIN_H = rn(40);
+  const BTN_PAD_H = rn(8);
+  const BTN_PAD_W = rn(14);
+  const RADIUS = rn(20);
+
+  const baseBtn = {
+    minWidth: rn(100),
+    minHeight: BTN_MIN_H,
+    paddingHorizontal: BTN_PAD_W,
+    paddingVertical: BTN_PAD_H,
+    borderRadius: RADIUS,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    overflow: 'hidden' as const, // 클리핑/픽셀 잔상 방지
   };
+
+  const labelStyle = (active: boolean) => ({
+    fontSize: 16,
+    fontWeight: '700' as const,
+    lineHeight: 22,              // fontSize보다 살짝 크게: 클리핑 방지
+    includeFontPadding: false,   // ANDROID: 글자 상단 여백 제거(깎임 방지)
+    textAlignVertical: 'center' as const, // ANDROID
+    color: active ? '#111827' : '#6B7280',
+    textAlign: 'center' as const,
+  });
 
   return (
     <View style={{ flexDirection: 'row' }}>
       <Pressable
         onPress={() => onChange('possible')}
         style={({ pressed }) => ({
-          ...base,
+          ...baseBtn,
           backgroundColor: '#F5BFC5',
           borderWidth: mode === 'possible' ? 2 : 0,
           borderColor: '#111827',
           opacity: pressed ? 0.9 : 1,
-          marginRight: 12, // gap 대체 (안드로이드 호환)
+          marginRight: 12,
         })}
       >
         <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '700',
-            color: mode === 'possible' ? '#111827' : '#6B7280',
-            textAlign: 'center',
-          }}
+          style={labelStyle(mode === 'possible')}
+          numberOfLines={1}
+          allowFontScaling={false} // 시스템 글자크기 확대 시 버튼 클리핑 방지
         >
           가능
         </Text>
@@ -332,7 +343,7 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
       <Pressable
         onPress={() => onChange('impossible')}
         style={({ pressed }) => ({
-          ...base,
+          ...baseBtn,
           backgroundColor: '#D9DDE2',
           borderWidth: mode === 'impossible' ? 2 : 0,
           borderColor: '#111827',
@@ -340,12 +351,9 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
         })}
       >
         <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '700',
-            color: mode === 'impossible' ? '#111827' : '#6B7280',
-            textAlign: 'center',
-          }}
+          style={labelStyle(mode === 'impossible')}
+          numberOfLines={1}
+          allowFontScaling={false}
         >
           불가능
         </Text>
@@ -353,6 +361,7 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
     </View>
   );
 }
+
 
 /** 셀: 칠해진 칸이면 선을 흰색(#FFF)으로, Hairline로 이음새 최소화 */
 function Cell({ width, height, color }: { width: number; height: number; color: string }) {
