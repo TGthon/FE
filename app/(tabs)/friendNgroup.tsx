@@ -118,14 +118,16 @@ export default function FriendNGroupScreen() {
       return;
     }
 
-    const token = getAccessToken();
+    const token = await getAccessToken();
+    console.log("토큰:", token);
+
     if (!token) {
       Alert.alert("오류", "로그인이 필요합니다.");
       return;
     }
 
     try {
-      const response = await fetch("http://localhost:3000/api/friends/add", {
+      const response = await fetch("https://api.ldh.monster/api/friends/add", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
