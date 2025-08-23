@@ -80,7 +80,7 @@ export default function FriendNGroupScreen() {
     }
 
     try {
-      const response = await fetch("http://localhost:8081/friends/add", {
+      const response = await fetch("http://localhost:3000/api/friends/add", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
