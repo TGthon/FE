@@ -16,7 +16,7 @@ import { useRouter } from "expo-router";
 import { getAccessToken } from "../lib/api";
 
 type FriendItem = {
-  id: string;
+  uid: string;
   name: string;
   email?: string;
   avatar?: string;
@@ -70,19 +70,19 @@ export default function FriendNGroupScreen() {
       name: "경희녀들",
       event: "맛집 투어",
       members: [
-        { id: "u1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
-        { id: "u2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
-        { id: "u3", name: "황유나", email: "test3@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+        { uid: "1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+        { uid: "2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+        { uid: "3", name: "황유나", email: "test3@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
       ],
     },
   ]);
 
   const [friends, setFriends] = useState<FriendItem[]>([
-    { id: "u1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
-    { id: "u2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
-    { id: "u3", name: "황유나", email: "test3@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
-    { id: "u4", name: "김동희", email: "test4@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
-    { id: "u5", name: "이동현", email: "test5@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { uid: "1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { uid: "2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { uid: "3", name: "황유나", email: "test3@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { uid: "4", name: "김동희", email: "test4@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
+    { uid: "5", name: "이동현", email: "test5@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
   ]);
 
   // 모달 상태
@@ -111,7 +111,7 @@ export default function FriendNGroupScreen() {
     const newGroup: GroupItem = {
       id: Date.now().toString(),
       name: newGroupName,
-      members: friends.filter((f) => selectedMembers.includes(f.id)),
+      members: friends.filter((f) => selectedMembers.includes(f.uid)),
     };
 
     setGroups((prev) => [...prev, newGroup]);
@@ -206,7 +206,7 @@ export default function FriendNGroupScreen() {
             });
 
             // 프론트 상태에서도 제거
-            setFriends((prev) => prev.filter((f) => f.id !== friendId));
+            setFriends((prev) => prev.filter((f) => f.uid !== friendId));
             setSelectedFriend(null);
           } catch (error) {
             Alert.alert("오류", "친구 삭제 중 문제가 발생했어요.");
@@ -250,7 +250,7 @@ export default function FriendNGroupScreen() {
           <View style={styles.memberGrid}>
             {selectedGroup?.members.map((m) => (
               <Pressable
-                key={m.id}
+                key={m.uid}
                 style={styles.memberItem}
                 onPress={() => {
                   setSelectedFriend(m);
@@ -274,7 +274,7 @@ export default function FriendNGroupScreen() {
         <Pressable style={styles.modalBox} onPress={(e) => e.stopPropagation()}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{selectedFriend?.name}</Text>
-            <Pressable onPress={() => selectedFriend && handleDeleteFriend(selectedFriend.id)}>
+            <Pressable onPress={() => selectedFriend && handleDeleteFriend(selectedFriend.uid)}>
               <MaterialCommunityIcons name="trash-can-outline" size={24} color="black" />
             </Pressable>
           </View>
@@ -301,11 +301,11 @@ export default function FriendNGroupScreen() {
           <ScrollView style={{ maxHeight: 200, marginVertical: 12 }}>
             {friends.map((f) => (
               <Pressable
-                key={f.id}
+                key={f.uid}
                 style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}
                 onPress={() => {
                   setSelectedMembers((prev) =>
-                    prev.includes(f.id) ? prev.filter((id) => id !== f.id) : [...prev, f.id]
+                    prev.includes(f.uid) ? prev.filter((id) => id !== f.uid) : [...prev, f.uid]
                   );
                 }}
               >
@@ -317,7 +317,7 @@ export default function FriendNGroupScreen() {
                     borderRadius: 4,
                     borderWidth: 1,
                     borderColor: "#9CA3AF",
-                    backgroundColor: selectedMembers.includes(f.id) ? "#2563EB" : "transparent",
+                    backgroundColor: selectedMembers.includes(f.uid) ? "#2563EB" : "transparent",
                   }}
                 />
                 <Text>{f.name}</Text>
@@ -332,7 +332,7 @@ export default function FriendNGroupScreen() {
       </Pressable>
     </Modal>
   );
-
+  
   return (
     <View style={{ flex: 1, backgroundColor: "#fff", padding: 16 }}>
       {/* 그룹 리스트 + 추가 버튼 */}
@@ -348,7 +348,7 @@ export default function FriendNGroupScreen() {
           <Pressable style={styles.groupCard} onPress={() => setSelectedGroup(item)}>
             <View style={styles.groupPreview}>
               {item.members.slice(0, 4).map((m) => (
-                <Image key={m.id} source={{ uri: m.avatar }} style={styles.avatarTiny} />
+                <Image key={m.uid} source={{ uri: m.avatar }} style={styles.avatarTiny} />
               ))}
             </View>
             <View style={{ marginLeft: 12 }}>
@@ -375,7 +375,7 @@ export default function FriendNGroupScreen() {
             <Text style={{ marginLeft: 12 }}>{item.name}</Text>
           </Pressable>
         )}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.uid}
       />
 
       {GroupModal()}
