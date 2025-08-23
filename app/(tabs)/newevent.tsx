@@ -29,7 +29,7 @@ export default function AddEventScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20, backgroundColor: "#fff" },
-  label: { fontSize: 18, fontWeight: "600", marginBottom: 40 },
+  label: { fontSize: 20, fontWeight: "600", marginBottom: 40 },
   button: {
     width: "80%",
     padding: 20,
