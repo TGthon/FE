@@ -17,7 +17,8 @@ import { Stack, useRouter } from "expo-router";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useFriends } from "./context/FriendContext";
-import { useGroups } from "./context/GroupContext";
+import { GroupItem, useGroups } from "./context/GroupContext";
+import { FriendItem } from "./context/FriendContext";
 
 /* ───────── 공용 컴포넌트 ───────── */
 
@@ -83,6 +84,7 @@ const Pill = memo(function PillComp({
   );
 });
 
+
 /* ───────── 유틸 ───────── */
 function mergeUnique<T extends { id: string; type: string }>(a: T[], b: T[]) {
   const map = new Map<string, T>();
@@ -141,7 +143,7 @@ export default function EventForm({
   const formatDate = (d: Date | null) => (d ? d.toISOString().split("T")[0] : "날짜 선택");
 
   // 검색 대상 = 친구 + 그룹
-  const friendPool = friends.map((f) => ({ id: f.id, name: f.name, type: "friend" as const }));
+  const friendPool = friends.map((f) => ({ id: f.uid, name: f.name, type: "friend" as const }));
   const groupPool = groups.map((g) => ({ id: g.id, name: g.name, type: "group" as const }));
 
   // 필터링 (query 입력해야만 결과가 보임)
@@ -249,7 +251,7 @@ export default function EventForm({
             onCancel={() => setEndPickerVisible(false)}
           />
 
-          {/* ✅ 다회성 이벤트에서만 주기 영역 */}
+          {/* 다회성 이벤트에서만 주기 영역 */}
           {isMulti && (
             <>
               <SectionDivider />
@@ -514,15 +516,15 @@ export default function EventForm({
               <Text style={{ fontWeight: "700", marginBottom: 6 }}>친구</Text>
               {friends.length === 0 && <Text style={{ color: "#9CA3AF", marginBottom: 8 }}>친구 없음</Text>}
               {friends.map((f) => {
-                const isOn = selected.some((s) => s.id === f.id && s.type === "friend");
+                const isOn = selected.some((s) => s.id === f.uid && s.type === "friend");
                 return (
                   <Pressable
-                    key={`friend-${f.id}`}
+                    key={`friend-${f.uid}`}
                     onPress={() =>
                       setSelected((prev) =>
                         isOn
-                          ? prev.filter((p) => !(p.id === f.id && p.type === "friend"))
-                          : [...prev, { id: f.id, name: f.name, type: "friend" as const }]
+                          ? prev.filter((p) => !(p.id === f.uid && p.type === "friend"))
+                          : [...prev, { id: f.uid, name: f.name, type: "friend" as const }]
                       )
                     }
                     style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6 }}
