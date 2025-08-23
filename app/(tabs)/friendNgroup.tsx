@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { getAccessToken } from "../lib/api";
 
 type FriendItem = {
   id: string;
@@ -117,7 +118,7 @@ export default function FriendNGroupScreen() {
       return;
     }
 
-    const token = localStorage.getItem("accessToken");
+    const token = getAccessToken();
     if (!token) {
       Alert.alert("오류", "로그인이 필요합니다.");
       return;
