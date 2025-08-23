@@ -1,75 +1,89 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  TouchableOpacity,
+  View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView,
+  Platform, Alert, Image, ActivityIndicator, Modal
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { apiPostJSON } from '../../../lib/api';
+import { apiGetJSON /*, apiPostJSON */ } from '../../../lib/api';
 
 const COLOR_PALETTE = [
-  '#F59CA9', '#F43F5E', '#EC4899', '#E11D48',
-  '#FB923C', '#F59E0B',
-  '#F6D04D',
-  '#22C55E', '#10B981', '#65A30D',
-  '#06B6D4', '#0EA5E9', '#3B82F6', '#2563EB',
-  '#8B5CF6', '#7C3AED', '#A855F7'
+  '#F59CA9','#F43F5E','#EC4899','#E11D48',
+  '#FB923C','#F59E0B','#F6D04D',
+  '#22C55E','#10B981','#65A30D',
+  '#06B6D4','#0EA5E9','#3B82F6','#2563EB',
+  '#8B5CF6','#7C3AED','#A855F7'
 ];
+
+/** API 타입 */
+type ApiUser = { uid: number; picture: string };
+type EventResp = { eventid: number; title: string; votes?: any; users: ApiUser[] };
+type RecommendResp = { start: number; end: number }; // unixtime(초)
 
 export default function EventFinalize() {
   const router = useRouter();
-
-  // params 정규화
-  const raw = useLocalSearchParams<{
-    id: string | string[];
-    title: string | string[];
-    date?: string | string[];   // 'YYYY-MM-DD'
-    start?: string | string[];  // 'HH:mm'
-    end?: string | string[];    // 'HH:mm'
-    color?: string | string[];
-    members?: string | string[]; // 콤마로 넘겨졌다면 "a,b,c"
-  }>();
-  const getStr = (v?: string | string[]) => (typeof v === 'string' ? v : v?.[0] ?? '');
+  const raw = useLocalSearchParams<{ id: string | string[]; title?: string | string[] }>();
+  const getStr = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v ?? '');
 
   const eventId = getStr(raw.id);
-  const title0  = getStr(raw.title);
-  const date0   = getStr(raw.date);
-  const start0  = getStr(raw.start) || '09:00';
-  const end0    = getStr(raw.end)   || '10:00';
-  const color0  = getStr(raw.color) || COLOR_PALETTE[0];
-  const members0 = (() => {
-    const m = getStr(raw.members);
-    return m ? m.split(',').map(s => s.trim()).filter(Boolean) : [];
-  })();
+  const titleFromParam = getStr(raw.title);
 
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
-  }, []);
+  // 기본값(오늘 09:00~10:00)
+  const todayStr = useMemo(() => toYMD(new Date()), []);
+  const [title, setTitle] = useState(titleFromParam || '이벤트');
+  const [color, setColor] = useState(COLOR_PALETTE[0]);
+  const [startDT, setStartDT] = useState(() => strToDate(todayStr, '09:00'));
+  const [endDT, setEndDT] = useState(() => strToDate(todayStr, '10:00'));
 
-  const baseDate = date0 || todayStr;
+  const [members, setMembers] = useState<ApiUser[]>([]);
 
-  // 상태값
-  const [title, setTitle] = useState<string>(()=> title0 || '이벤트');
-  const [color, setColor] = useState(color0);
-  const [members, setMembers] = useState<string[]>(members0);
-  const [memberInput, setMemberInput] = useState('');
+  // 추천 불러오기 로딩/적용 여부/사용자 수정 여부
+  const [recoLoading, setRecoLoading] = useState(false);
+  const [recoApplied, setRecoApplied] = useState(false);
+  const [dirty, setDirty] = useState(false); // 사용자가 날짜/시간을 수정했는지
 
-  const [startDT, setStartDT] = useState(() => strToDate(baseDate, start0));
-  const [endDT,   setEndDT]   = useState(() => strToDate(baseDate, end0));
+  /** (1) 이름 받아와서 표기 + (3) 구성원 받아와서 표기 + (2) 추천 날짜 적용 */
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
 
-  // 확정
+    (async () => {
+      // 이벤트 상세 (users, title)
+      try {
+        const data = await apiGetJSON<EventResp>(`/api/event/${eventId}`);
+        if (cancelled) return;
+
+        if (data?.title) setTitle((t) => t || data.title);
+        setMembers(Array.isArray(data?.users) ? data.users : []);
+      } catch (e) {
+        console.warn('GET /api/event/:id 실패', e);
+      }
+
+      // 추천 시간
+      setRecoLoading(true);
+      try {
+        const rec = await apiGetJSON<RecommendResp>(`/api/event/${eventId}/recommend`);
+        if (cancelled) return;
+
+        if (!dirty && rec?.start && rec?.end) {
+          const s = new Date(rec.start * 1000);
+          const e = new Date(rec.end * 1000);
+          setStartDT(s);
+          setEndDT(e);
+          setRecoApplied(true);
+        }
+      } catch (e) {
+        console.warn('GET /recommend 실패', e);
+      } finally {
+        if (!cancelled) setRecoLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [eventId, dirty]);
+
+  /** 확정 (4개 요구사항 외 로직 – 실제 확정 API 연결은 추후) */
   const onConfirm = async () => {
     if (!title.trim()) return Alert.alert('제목을 입력하세요.');
     if (Number.isNaN(startDT.getTime()) || Number.isNaN(endDT.getTime()))
@@ -82,15 +96,13 @@ export default function EventFinalize() {
       date: toYMD(startDT),
       start: toHM(startDT),
       end: toHM(endDT),
-      members,
+      members: members.map((m) => String(m.uid)),
       color,
     };
 
     try {
       // TODO: 백엔드 확정 API 연결
       // await apiPostJSON(`/api/event/${eventId}/finalize`, payload);
-
-      // 일단 뒤로 이동(또는 상세로 이동)
       router.back();
     } catch (e: any) {
       Alert.alert('확정 실패', e?.message ?? '오류가 발생했습니다.');
@@ -101,7 +113,7 @@ export default function EventFinalize() {
     <>
       <Stack.Screen
         options={{
-          title: `${title0} 확정하기`,
+          title: `${title} 확정하기`,
           headerTitleStyle: { fontSize: 24, fontWeight: '700' },
           headerTitleAlign: 'center',
         }}
@@ -116,24 +128,20 @@ export default function EventFinalize() {
           contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* 제목 */}
-          <Input
-            value={title}
-            onChangeText={setTitle}
-            placeholder="이벤트 이름"
-            returnKeyType="done"
-          />
+          {/* 1) 이름 */}
+          <Input value={title} onChangeText={setTitle} placeholder="이벤트 이름" returnKeyType="done" />
           <Text style={{ color: '#6B7280', fontSize: 14, marginTop: 4, marginLeft: 8 }}>
             *이벤트 이름은 구성원 모두에게 동일하게 적용됩니다.
           </Text>
 
-          {/* 날짜/시간 */}
+          {/* 2) 추천 날짜로 일정 정하기 (Pill만) */}
           <SectionDivider />
           <SectionIcon name="calendar-outline" />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', columnGap: 12, marginTop: 8 }}>
             <DateTimePill
               value={startDT}
               onChange={(d) => {
+                setDirty(true);
                 setStartDT(d);
                 if (d >= endDT) setEndDT(addMinutes(d, 60));
               }}
@@ -142,48 +150,73 @@ export default function EventFinalize() {
             <DateTimePill
               value={endDT}
               onChange={(d) => {
+                setDirty(true);
                 if (d <= startDT) return setEndDT(addMinutes(startDT, 30));
                 setEndDT(d);
               }}
             />
           </View>
-          <Text style = {{ color: '#6B7280', fontSize: 14, marginTop: 4, marginLeft: 8}}>
-            *자동으로 추천된 날짜입니다. 수정 가능합니다.
-          </Text>
+          {recoApplied && (
+            <Text style={{ color: '#6B7280', fontSize: 14, marginTop: 4, marginLeft: 8 }}>
+              *자동으로 추천된 날짜입니다.
+            </Text>
+          )}
 
-          {/* 구성원(직접 입력만) */}
+          {/* 3) 구성원 */}
           <SectionDivider />
-          <Row icon={<Ionicons name="people-outline" size={22} color="#111827" />}>
-            <Text style={{ fontSize: 16, color: '#111827' }}>{members}</Text>
-          </Row>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Ionicons name="people-outline" size={22} color="#111827" />
+            <Text style={{ marginLeft: 6, fontSize: 16, color: '#111827', fontWeight: '700' }}>
+              구성원 {members.length}명
+            </Text>
+          </View>
+          {members.length === 0 ? (
+            <Text style={{ color: '#9CA3AF', marginLeft: 28 }}>구성원 정보가 없습니다.</Text>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {members.map((u) => (
+                <View key={u.uid} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      width: 28, height: 28, borderRadius: 14, overflow: 'hidden',
+                      borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginRight: 8,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    {u.picture ? <Image source={{ uri: u.picture }} style={{ width: 28, height: 28 }} /> : <Text>👤</Text>}
+                  </View>
+                  <Text style={{ fontSize: 14, color: '#111827' }}>사용자 {u.uid}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
-          {/* 색상 */}
+          {/* 4) 색상 정하기 */}
           <SectionDivider />
           <Text style={{ fontSize: 14, color: '#374151', marginBottom: 6, fontWeight: '600' }}>색상</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
             {COLOR_PALETTE.map((c) => {
-              const selected = c === color;
+              const selectedColor = c === color;
               return (
                 <Pressable
                   key={c}
                   onPress={() => setColor(c)}
                   style={{
-                    width: 34, height: 34, borderRadius: 17,
-                    backgroundColor: c,
+                    width: 34, height: 34, borderRadius: 17, backgroundColor: c,
                     alignItems: 'center', justifyContent: 'center',
-                    borderWidth: selected ? 2 : 0,
-                    borderColor: selected ? '#111827' : 'transparent',
+                    borderWidth: selectedColor ? 2 : 0,
+                    borderColor: selectedColor ? '#111827' : 'transparent',
                     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, elevation: 1,
                   }}
                 >
-                  {selected ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
+                  {selectedColor ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
                 </Pressable>
               );
             })}
           </View>
-            <Text style={{ color: '#6B7280', fontSize: 14, marginTop: 4, marginLeft: 8 }}>
-                *이벤트 색상은 캘린더에 표시됩니다. 선택한 색상은 이벤트 구성원 모두에게 동일하게 적용됩니다.
-            </Text>
+          <Text style={{ color: '#6B7280', fontSize: 14, marginTop: 4, marginLeft: 8 }}>
+            *이벤트 색상은 캘린더에 표시됩니다. 선택한 색상은 이벤트 구성원 모두에게 동일하게 적용됩니다.
+          </Text>
         </ScrollView>
 
         {/* 하단 버튼 바 */}
@@ -220,11 +253,21 @@ export default function EventFinalize() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 추천 시간 로딩 오버레이 */}
+      <Modal visible={recoLoading} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ backgroundColor: '#fff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <ActivityIndicator />
+            <Text style={{ color: '#374151' }}>추천 시간 불러오는 중…</Text>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
 
-/* ───────── 재사용 컴포넌트 ───────── */
+/* ───────── 공통 컴포넌트 & 유틸 ───────── */
 
 function SectionIcon({ name }: { name: React.ComponentProps<typeof Ionicons>['name'] }) {
   return (
@@ -254,14 +297,7 @@ function Input(props: React.ComponentProps<typeof TextInput>) {
   );
 }
 
-/** 알약 UI: 위-날짜, 아래-시간 */
-function DateTimePill({
-  value,
-  onChange,
-}: {
-  value: Date;
-  onChange: (d: Date) => void;
-}) {
+function DateTimePill({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
   const [showDate, setShowDate] = useState(false);
   const [showTime, setShowTime] = useState(false);
 
@@ -272,7 +308,6 @@ function DateTimePill({
     next.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
     onChange(next);
   };
-
   const onChangeTime = (e: DateTimePickerEvent, d?: Date) => {
     if (Platform.OS === 'android') setShowTime(false);
     if (e.type !== 'set' || !d) return;
@@ -282,45 +317,23 @@ function DateTimePill({
   };
 
   return (
-    <View style={{
-      borderWidth: 1, borderColor: '#111827', borderRadius: 16,
-      paddingHorizontal: 14, paddingVertical: 8, minWidth: 160,
-    }}>
+    <View style={{ borderWidth: 1, borderColor: '#111827', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, minWidth: 160 }}>
       <Pressable onPress={() => setShowDate(true)}>
-        <Text style={{ fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
-          {formatKoreanDate(value)}
-        </Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', textAlign: 'center' }}>{formatKoreanDate(value)}</Text>
         <View style={{ height: 1, backgroundColor: '#111827', marginTop: 6 }} />
       </Pressable>
 
       <Pressable onPress={() => setShowTime(true)}>
-        <Text style={{ fontSize: 18, fontWeight: '700', textAlign: 'center', marginTop: 6 }}>
-          {toHM(value)}
-        </Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', textAlign: 'center', marginTop: 6 }}>{toHM(value)}</Text>
       </Pressable>
 
-      {showDate && (
-        <DateTimePicker
-          value={value}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={onChangeDate}
-        />
-      )}
-      {showTime && (
-        <DateTimePicker
-          value={value}
-          mode="time"
-          is24Hour
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onChangeTime}
-        />
-      )}
+      {showDate && <DateTimePicker value={value} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={onChangeDate} />}
+      {showTime && <DateTimePicker value={value} mode="time" is24Hour display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onChangeTime} />}
     </View>
   );
 }
 
-/* ───────── 유틸 ───────── */
+/** 유틸 */
 function formatKoreanDate(d: Date) {
   return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 }
@@ -342,27 +355,4 @@ function addMinutes(d: Date, mins: number) {
   const n = new Date(d);
   n.setMinutes(n.getMinutes() + mins);
   return n;
-}
-
-function Row({
-  icon,
-  children,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
-      }}
-    >
-      <View style={{ width: 28, alignItems: 'center', marginRight: 8 }}>{icon}</View>
-      <View style={{ flex: 1 }}>{children}</View>
-    </View>
-  );
 }

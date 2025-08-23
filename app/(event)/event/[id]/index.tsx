@@ -5,7 +5,7 @@ import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import EventRenameModal from '../../../components/EventRenameModal';
-import { apiPostJSON, apiDeleteJSON, apiGetJSON } from '../../../lib/api';
+import { apiPostJSON, apiDeleteJSON, apiGetJSON, apiPutJSON } from '../../../lib/api';
 
 /** 투표 스키마 (화면 내부용) */
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -67,6 +67,15 @@ export default function EventDetail() {
   const [members, setMembers] = useState<ApiUser[]>([]);
   const [votes, setVotes] = useState<Vote[]>([]); // 화면 집계용
 
+  // 이벤트 확정(이제 Finalize 화면에서 추천을 직접 호출)
+  const finalizeEvent = () => {
+    if (!eventId) return;
+    router.push({
+      pathname: '/(event)/event/[id]/finalize',
+      params: { id: eventId, title: fetchedTitle },
+    });
+  };
+
   // 이벤트 상세 불러오기
   useEffect(() => {
     if (!eventId) return;
@@ -106,10 +115,28 @@ export default function EventDetail() {
   }, [eventId]);
 
   const applyRename = useCallback(async () => {
-    // TODO: 백엔드 연결 시 교체
-    // await apiPutJSON(`/event/${eventId}/rename`, { title: nameInput.trim()});
-    closeRename();
-  }, [eventId, nameInput]);
+    if (!eventId) {
+      Alert.alert('오류', '이벤트 ID가 없습니다.');
+      return;
+    }
+    const next = nameInput.trim();
+    if (!next) {
+      Alert.alert('안내', '이름을 입력하세요.');
+      return;
+    }
+    if (next === fetchedTitle) {
+      closeRename();
+      return;
+    }
+
+    try {
+      await apiPutJSON(`/api/event/${eventId}/name`, { name: next });
+      setFetchedTitle(next);
+      closeRename();
+    } catch (e: any) {
+      Alert.alert('실패', e?.message ?? '이름 변경에 실패했습니다.');
+    }
+  }, [eventId, nameInput, fetchedTitle]);
 
   /** 날짜별 집계 (API 투표 기반) */
   const aggByDate = useMemo<Record<string, DayAgg>>(() => {
@@ -451,7 +478,7 @@ export default function EventDetail() {
           </View>
 
           <MenuItem
-            label="그룹 이름 변경"
+            label="이벤트 이름 변경"
             onPress={() => {
               setMenuOpen(false);
               setNameInput(fetchedTitle ?? '');
@@ -477,35 +504,7 @@ export default function EventDetail() {
             important
             onPress={() => {
               setMenuOpen(false);
-
-              if (Platform.OS === 'web') {
-                const ok = window.confirm('이 이벤트를 확정하시겠습니까? 확정 후 수정이 불가능합니다.');
-                if (ok) {
-                  router.push({
-                    pathname: '/(event)/event/[id]/finalize',
-                    params: { id: eventId, title: fetchedTitle },
-                  });
-                }
-                return;
-              }
-
-              Alert.alert(
-                '이벤트 확정',
-                '이 이벤트를 확정하시겠습니까? 확정 후 수정이 불가능합니다.',
-                [
-                  { text: '취소', style: 'cancel' },
-                  {
-                    text: '확정',
-                    style: 'default',
-                    onPress: () =>
-                      router.push({
-                        pathname: '/(event)/event/[id]/finalize',
-                        params: { id: eventId, title: fetchedTitle },
-                      }),
-                  },
-                ],
-                { cancelable: true }
-              );
+              finalizeEvent();
             }}
           />
           <MenuItem

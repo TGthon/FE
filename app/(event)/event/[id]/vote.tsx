@@ -204,11 +204,6 @@ export default function VoteScreen() {
         <Text style={{ marginTop: 12, color: '#64748B' }}>
           모드를 고른 뒤 달력에서 여러 날짜를 탭하세요. 같은 모드로 다시 탭하면 해제됩니다.
         </Text>
-
-        {/* 하단 고정 버튼(원하면 사용) — 헤더의 "투표하기" 대신 아래 버튼을 쓸 수도 있어요 */}
-        {/* <Pressable onPress={submit} style={{ marginTop: 16, backgroundColor: '#ef4444', padding: 14, borderRadius: 12, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>투표하기</Text>
-        </Pressable> */}
       </ScrollView>
     </>
   );

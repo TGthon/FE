@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { FlatList, View, Text, Modal, TextInput, Pressable, Alert, Platform } from 'react-native';
 import EventCard from '../components/EventCard';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import EventRenameModal from '../components/EventRenameModal';
 import { apiGetJSON, apiPutJSON, apiDeleteJSON, getAccessToken } from '../lib/api';
 
@@ -63,9 +63,12 @@ export default function EventListScreen() {
     }
   }, [router, normalizeEvents]);
 
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+  useFocusEffect(
+    useCallback(() => {
+      setRefreshing(true);
+      loadEvents().finally(()=> setRefreshing(false));
+  }, [loadEvents])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
