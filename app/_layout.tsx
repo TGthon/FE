@@ -5,7 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import { FriendProvider } from "./context/FriendContext";
 import { GroupProvider } from "./context/GroupContext";
-
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function RootLayout() {
@@ -17,22 +17,26 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <FriendProvider>
-        <GroupProvider>
-          <Stack>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(event)" options={{ headerShown: false }} />
-            <Stack.Screen name="calendarDetail" options={{ title: '일정 상세' }} />
-            <Stack.Screen name="calendarNew" options={{ title: '새 일정' }} />
-            <Stack.Screen name="calendarEdit" options={{ title: '일정 수정' }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-        </GroupProvider>      
-      </FriendProvider>
+    <SafeAreaProvider>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+          <FriendProvider>
+            <GroupProvider>
+              <Stack>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="(event)" options={{ headerShown: false }} />
+                <Stack.Screen name="calendarDetail" options={{ title: '일정 상세' }} />
+                <Stack.Screen name="calendarNew" options={{ title: '새 일정' }} />
+                <Stack.Screen name="calendarEdit" options={{ title: '일정 수정' }} />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+            </GroupProvider>      
+          </FriendProvider>
+        </ThemeProvider>
+      </SafeAreaView>
       <StatusBar style="auto" />
-    </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
