@@ -14,7 +14,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { apiGetJSON } from './lib/api';
+import { apiGetJSON, apiPostJSON } from './lib/api';
 
 const COLOR_PALETTE = [
   '#F59CA9', '#F43F5E', '#EC4899', '#E11D48',
@@ -130,11 +130,10 @@ export default function CalendarNew() {
     };
 
     try {
-      // TODO: 실제 저장 API 연동
-      // await api.post('/events', payload);
-
-    } finally {
-      router.replace('/(tabs)/calendar');
+      await apiPostJSON('/api/calendar', payload); // 백엔드에 저장
+      router.replace('/(tabs)/calendar'); // 캘린더 화면으로 이동
+    } catch (err: any) {
+    Alert.alert('저장 실패', err?.message ?? '일정 저장 중 오류 발생');
     }
   };
 
