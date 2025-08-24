@@ -35,7 +35,12 @@ export default function FriendNGroupScreen() {
 
       try {
         const data = await apiGetJSON<any>('/api/friends/list')
-        setFriends(data.friends); // 프론트 상태에 저장
+        setFriends(data.friends.map((f: any) => ({
+          uid: f.uid,
+          name: f.name,
+          email: f.email,
+          avatar: f.picture || "https://api.ldh.monster/images/default.jpg"
+        }))); // 프론트 상태에 저장
       } catch (error) {
         console.error("친구 목록 불러오기 실패:", error);
       }
@@ -177,7 +182,13 @@ export default function FriendNGroupScreen() {
         friendEmail: newFriendEmail
       });
 
-      const addedFriend = data.friend;
+      //const addedFriend = data.friend;
+      const addedFriend = {
+        uid: data.friend.uid,
+        name: data.friend.name,
+        email: data.friend.email,
+        avatar: data.friend.picture
+      }
 
       setFriends((prev) => [...prev, addedFriend]);
       setNewFriendEmail("");
