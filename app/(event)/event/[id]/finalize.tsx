@@ -21,6 +21,12 @@ type ApiUser = { uid: number; picture: string };
 type EventResp = { eventid: number; title: string; votes?: any; users: ApiUser[] };
 type RecommendResp = { start: number; end: number }; // unixtime(초)
 
+/** 공용 알림: 네이티브는 Alert, 웹은 window.alert */
+function alertWebOrNative(title: string, message: string) {
+  if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`);
+  else Alert.alert(title, message);
+}
+
 export default function EventFinalize() {
   const router = useRouter();
   const raw = useLocalSearchParams<{ id: string | string[]; title?: string | string[] }>();
@@ -79,12 +85,10 @@ export default function EventFinalize() {
 
   /** 확정: POST /api/events/:id/confirm { start, name, color } */
   const onConfirm = async () => {
-    if (!title.trim()) return Alert.alert('제목을 입력하세요.');
-    if (Number.isNaN(eventDT.getTime()))
-      return Alert.alert('날짜/시간을 선택하세요.');
-
+    if (!title.trim()) return alertWebOrNative('안내', '제목을 입력하세요.');
+    if (Number.isNaN(eventDT.getTime())) return alertWebOrNative('안내', '날짜/시간을 선택하세요.');
     if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-      return Alert.alert('색상 형식이 올바르지 않습니다. 예) #A1B2C3');
+      return alertWebOrNative('안내', '색상 형식이 올바르지 않습니다. 예) #A1B2C3');
     }
 
     const payload = {
@@ -95,16 +99,29 @@ export default function EventFinalize() {
 
     try {
       setSaving(true);
-      await apiPostJSON(`/api/events/${eventId}/confirm`, payload);
-      Alert.alert('확정 완료', '이벤트를 확정했어요.', [
-        { text: '확인', onPress: () => router.back() },
-      ]);
+      await apiPostJSON(`/api/event/${eventId}/confirm`, payload);
+
+      // 성공 시 캘린더 탭으로 replace
+      if (Platform.OS === 'web') {
+        window.alert('확정 완료\n\n이벤트를 확정했어요.');
+        router.replace('/(tabs)/calendar');
+      } else {
+        Alert.alert('확정 완료', '이벤트를 확정했어요.', [
+          { text: '확인', onPress: () => router.replace('/(tabs)/calendar') },
+        ]);
+      }
     } catch (e: any) {
-      Alert.alert('확정 실패', e?.message ?? '오류가 발생했습니다.');
+      const msg = e?.message ?? '오류가 발생했습니다.';
+      alertWebOrNative(
+        '확정 실패',
+        `${msg}\n\n요청: POST /api/event/${eventId}/confirm\npayload: ${JSON.stringify(payload)}`
+      );
+      console.error('POST /api/event/:id/confirm 실패', { eventId, payload, error: e });
     } finally {
       setSaving(false);
     }
   };
+
 
   return (
     <>
