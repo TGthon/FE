@@ -6,7 +6,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { apiGetJSON /*, apiPostJSON */ } from '../../../lib/api';
+import { apiGetJSON, apiPostJSON } from '../../../lib/api';
 
 const COLOR_PALETTE = [
   '#F59CA9','#F43F5E','#EC4899','#E11D48',
@@ -29,48 +29,42 @@ export default function EventFinalize() {
   const eventId = getStr(raw.id);
   const titleFromParam = getStr(raw.title);
 
-  // 기본값(오늘 09:00~10:00)
+  // 기본값(오늘 09:00)
   const todayStr = useMemo(() => toYMD(new Date()), []);
   const [title, setTitle] = useState(titleFromParam || '이벤트');
   const [color, setColor] = useState(COLOR_PALETTE[0]);
-  const [startDT, setStartDT] = useState(() => strToDate(todayStr, '09:00'));
-  const [endDT, setEndDT] = useState(() => strToDate(todayStr, '10:00'));
+  const [eventDT, setEventDT] = useState(() => strToDate(todayStr, '09:00'));
 
   const [members, setMembers] = useState<ApiUser[]>([]);
 
-  // 추천 불러오기 로딩/적용 여부/사용자 수정 여부
+  // 추천/저장 로딩
   const [recoLoading, setRecoLoading] = useState(false);
   const [recoApplied, setRecoApplied] = useState(false);
-  const [dirty, setDirty] = useState(false); // 사용자가 날짜/시간을 수정했는지
+  const [dirty, setDirty] = useState(false); // 사용자가 일시를 수정했는지
+  const [saving, setSaving] = useState(false);
 
-  /** (1) 이름 받아와서 표기 + (3) 구성원 받아와서 표기 + (2) 추천 날짜 적용 */
+  /** (1) 제목/구성원 로드 + (2) 추천 start 적용 */
   useEffect(() => {
     if (!eventId) return;
     let cancelled = false;
 
     (async () => {
-      // 이벤트 상세 (users, title)
       try {
         const data = await apiGetJSON<EventResp>(`/api/event/${eventId}`);
         if (cancelled) return;
-
         if (data?.title) setTitle((t) => t || data.title);
         setMembers(Array.isArray(data?.users) ? data.users : []);
       } catch (e) {
         console.warn('GET /api/event/:id 실패', e);
       }
 
-      // 추천 시간
       setRecoLoading(true);
       try {
         const rec = await apiGetJSON<RecommendResp>(`/api/event/${eventId}/recommend`);
         if (cancelled) return;
 
-        if (!dirty && rec?.start && rec?.end) {
-          const s = new Date(rec.start * 1000);
-          const e = new Date(rec.end * 1000);
-          setStartDT(s);
-          setEndDT(e);
+        if (!dirty && rec?.start) {
+          setEventDT(new Date(rec.start * 1000));
           setRecoApplied(true);
         }
       } catch (e) {
@@ -83,29 +77,32 @@ export default function EventFinalize() {
     return () => { cancelled = true; };
   }, [eventId, dirty]);
 
-  /** 확정 (4개 요구사항 외 로직 – 실제 확정 API 연결은 추후) */
+  /** 확정: POST /api/events/:id/confirm { start, name, color } */
   const onConfirm = async () => {
     if (!title.trim()) return Alert.alert('제목을 입력하세요.');
-    if (Number.isNaN(startDT.getTime()) || Number.isNaN(endDT.getTime()))
+    if (Number.isNaN(eventDT.getTime()))
       return Alert.alert('날짜/시간을 선택하세요.');
-    if (endDT <= startDT)
-      return Alert.alert('종료 시간은 시작 시간보다 커야 합니다.');
+
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      return Alert.alert('색상 형식이 올바르지 않습니다. 예) #A1B2C3');
+    }
 
     const payload = {
-      title: title.trim(),
-      date: toYMD(startDT),
-      start: toHM(startDT),
-      end: toHM(endDT),
-      members: members.map((m) => String(m.uid)),
+      start: Math.floor(eventDT.getTime() / 1000), // unixtime(초)
+      name: title.trim(),
       color,
     };
 
     try {
-      // TODO: 백엔드 확정 API 연결
-      // await apiPostJSON(`/api/event/${eventId}/finalize`, payload);
-      router.back();
+      setSaving(true);
+      await apiPostJSON(`/api/events/${eventId}/confirm`, payload);
+      Alert.alert('확정 완료', '이벤트를 확정했어요.', [
+        { text: '확인', onPress: () => router.back() },
+      ]);
     } catch (e: any) {
       Alert.alert('확정 실패', e?.message ?? '오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -134,31 +131,21 @@ export default function EventFinalize() {
             *이벤트 이름은 구성원 모두에게 동일하게 적용됩니다.
           </Text>
 
-          {/* 2) 추천 날짜로 일정 정하기 (Pill만) */}
+          {/* 2) 일시(단일) */}
           <SectionDivider />
           <SectionIcon name="calendar-outline" />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', columnGap: 12, marginTop: 8 }}>
+          <View style={{ alignItems: 'center', marginTop: 8 }}>
             <DateTimePill
-              value={startDT}
+              value={eventDT}
               onChange={(d) => {
                 setDirty(true);
-                setStartDT(d);
-                if (d >= endDT) setEndDT(addMinutes(d, 60));
-              }}
-            />
-            <Text style={{ color: '#6B7280' }}>→</Text>
-            <DateTimePill
-              value={endDT}
-              onChange={(d) => {
-                setDirty(true);
-                if (d <= startDT) return setEndDT(addMinutes(startDT, 30));
-                setEndDT(d);
+                setEventDT(d);
               }}
             />
           </View>
           {recoApplied && (
             <Text style={{ color: '#6B7280', fontSize: 14, marginTop: 4, marginLeft: 8 }}>
-              *자동으로 추천된 날짜입니다.
+              *자동으로 추천된 일시입니다.
             </Text>
           )}
 
@@ -191,7 +178,7 @@ export default function EventFinalize() {
             </View>
           )}
 
-          {/* 4) 색상 정하기 */}
+          {/* 4) 색상 */}
           <SectionDivider />
           <Text style={{ fontSize: 14, color: '#374151', marginBottom: 6, fontWeight: '600' }}>색상</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
@@ -230,11 +217,13 @@ export default function EventFinalize() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <Pressable
               onPress={() => router.back()}
+              disabled={saving}
               style={({ pressed }) => ({
                 flex: 1, paddingVertical: 12, borderRadius: 22,
                 borderWidth: 1, borderColor: '#111827',
                 backgroundColor: pressed ? '#F3F4F6' : '#fff',
                 alignItems: 'center', justifyContent: 'center',
+                opacity: saving ? 0.6 : 1,
               })}
             >
               <Text style={{ color: '#111827', fontWeight: '700' }}>취소</Text>
@@ -242,13 +231,19 @@ export default function EventFinalize() {
 
             <Pressable
               onPress={onConfirm}
+              disabled={saving}
               style={({ pressed }) => ({
                 flex: 1, paddingVertical: 12, borderRadius: 22,
-                backgroundColor: pressed ? '#fb7185' : '#F43F5E',
+                backgroundColor: saving ? '#FCA5A5' : pressed ? '#fb7185' : '#F43F5E',
                 alignItems: 'center', justifyContent: 'center',
+                opacity: saving ? 0.8 : 1,
               })}
             >
-              <Text style={{ color: '#fff', fontWeight: '700' }}>확정</Text>
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={{ color: '#fff', fontWeight: '700' }}>확정</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -350,9 +345,4 @@ function toHM(d: Date) {
 }
 function strToDate(ymd: string, hhmm: string) {
   return new Date(`${ymd}T${hhmm}:00`);
-}
-function addMinutes(d: Date, mins: number) {
-  const n = new Date(d);
-  n.setMinutes(n.getMinutes() + mins);
-  return n;
 }
