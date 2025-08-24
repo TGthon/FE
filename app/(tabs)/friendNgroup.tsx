@@ -98,7 +98,7 @@ export default function FriendNGroupScreen() {
 
 
   // 그룹 추가
-  const handleAddGroup = () => {
+  const handleAddGroup = async () => {
     if (!newGroupName.trim()) {
       Alert.alert("실패", "그룹명을 입력해주세요.");
       return;
@@ -108,8 +108,26 @@ export default function FriendNGroupScreen() {
       return;
     }
 
+    try {
+    const token = await getAccessToken();
+    const response = await fetch("https://api.ldh.monster/api/friends/groupadd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({
+        name: newGroupName,
+        memberIds: selectedMembers, // ["u1", "u2", ...]
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("그룹 저장 실패");
+    }
+
+    const result = await response.json();
+
+    // 서버에서 저장된 그룹 정보 반환 시 사용
     const newGroup: GroupItem = {
-      id: Date.now().toString(),
+      id: result.groupId, // 서버에서 생성된 ID
       name: newGroupName,
       members: friends.filter((f) => selectedMembers.includes(f.uid)),
     };
@@ -119,7 +137,12 @@ export default function FriendNGroupScreen() {
     setSelectedMembers([]);
     setShowAddGroupModal(false);
     Alert.alert("성공", "새 그룹이 추가되었습니다.");
-  };
+  } catch (error) {
+    console.error("그룹 저장 오류:", error);
+    Alert.alert("실패", "그룹 저장 중 문제가 발생했습니다.");
+  }
+};
+
 
   // 그룹 나가기
   const handleLeaveGroup = (groupId: string) => {
