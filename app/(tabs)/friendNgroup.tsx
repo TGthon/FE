@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { getAccessToken } from "../lib/api";
+import { apiGetJSON, apiPostJSON, getAccessToken } from "../lib/api";
 
 type FriendItem = {
   uid: string;
@@ -32,26 +32,9 @@ type GroupItem = {
 export default function FriendNGroupScreen() {
   useEffect(() => {
     const fetchFriends = async () => {
-      const token = await getAccessToken();
-      console.log("보내는 토큰:", token);
-      if (!token) {
-        console.warn("토큰 없음: 로그인 필요");
-        return;
-      }
 
       try {
-        const res = await fetch("https://api.ldh.monster/api/friends/list", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        });
-        if (!res.ok) {
-          const text = await res.text(); // HTML 에러 페이지일 수 있음
-          throw new Error(`서버 오류: ${res.status}\n${text}`);
-        }
-
-        const data = await res.json();
+        const data = await apiGetJSON<any>('/api/friends/list')
         setFriends(data.friends); // 프론트 상태에 저장
       } catch (error) {
         console.error("친구 목록 불러오기 실패:", error);
@@ -62,22 +45,15 @@ export default function FriendNGroupScreen() {
 
 
     const fetchGroups = async () => {
-      const token = await getAccessToken();
       try {
-        const res = await fetch("https://api.ldh.monster/api/group/grouplist", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        });
+        const data = await apiGetJSON<any>('/api/group/grouplist')
+        let grouplist = data.grouplist.map((group: any) => ({
+          ...group,
+          members: []
+        }))
 
-        if (!res.ok) {
-          const text = await res.text(); // HTML 에러 페이지일 수 있음
-          throw new Error(`서버 오류: ${res.status}\n${text}`);
-        }
-
-        const data = await res.json();
-        setGroups(data.groups); // 프론트 상태에 저장
+        console.log(grouplist)
+        setGroups(grouplist); // 프론트 상태에 저장
       } catch (error) {
         console.error("그룹 목록 불러오기 실패:", error);
       }
@@ -134,24 +110,10 @@ export default function FriendNGroupScreen() {
     }
 
     try {
-      const token = await getAccessToken();
-      const response = await fetch("https://api.ldh.monster/api/group/groupadd", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name: newGroupName,
-          memberIds: selectedMembers, // ["u1", "u2", ...]
-        }),
+      const result = await apiPostJSON<any>('/api/group/groupadd', {
+        name: newGroupName,
+        memberIds: selectedMembers
       });
-
-      if (!response.ok) {
-        throw new Error("그룹 저장 실패");
-      }
-
-      const result = await response.json();
 
       // 서버에서 저장된 그룹 정보 반환 시 사용
       const newGroup: GroupItem = {
@@ -160,6 +122,8 @@ export default function FriendNGroupScreen() {
         members: friends.filter((f) => selectedMembers.includes(f.uid)),
       };
 
+      console.log(groups);
+      console.log(newGroup);
       setGroups((prev) => [...prev, newGroup]);
       setNewGroupName("");
       setSelectedMembers([]);
