@@ -100,7 +100,7 @@ function normalizeFromBackend(list: any[]): EventsByDate {
     }
 
     const item: EventItem = {
-      id: String(raw?.id ?? `${startSec}-${idx}`),
+      id: String(raw?.scheduleid),
       title,
       start: toHM(startDate),
       end: toHM(endDate),

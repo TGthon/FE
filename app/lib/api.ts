@@ -1,3 +1,4 @@
+// lib/api.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BASE_URL = 'https://api.ldh.monster';
@@ -40,6 +41,8 @@ function buildUrl(path: string) {
 function buildHeaders(options: RequestInit, token?: string) {
   const headers = new Headers(options.headers || {});
   if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+
+  // ⚠️ body가 있을 때만 Content-Type 지정 (DELETE 빈 바디 400 방지)
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
@@ -50,27 +53,49 @@ function buildHeaders(options: RequestInit, token?: string) {
 async function doFetch(path: string, options: RequestInit, token?: string) {
   const url = buildUrl(path);
   const headers = buildHeaders(options, token);
-  return fetch(url, { ...options, headers });
+
+  return fetch(url, {
+    // 웹에서도 쿠키 전송(세션 기반 API 대비)
+    credentials: 'include',
+    ...options,
+    headers,
+  });
 }
 
 async function safeJson(res: Response) {
   const text = await res.text();
   if (!text) return null;
-  try { return JSON.parse(text); } catch { return text; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 async function toApiError(res: Response) {
   let detail: any = '';
-  try { detail = await res.clone().json(); }
-  catch { try { detail = await res.text(); } catch { detail = ''; } }
+  try {
+    detail = await res.clone().json();
+  } catch {
+    try {
+      detail = await res.text();
+    } catch {
+      detail = '';
+    }
+  }
   const msg = [
     `${res.status} ${res.statusText}`,
     typeof detail === 'string' ? detail : detail?.message,
-  ].filter(Boolean).join(' | ');
-  return new Error(msg);
+  ]
+    .filter(Boolean)
+    .join(' | ');
+  const err = new Error(msg || `HTTP ${res.status}`);
+  // @ts-expect-error attach status for callers
+  err.status = res.status;
+  return err;
 }
 
-// ── Refresh logic (A안) ──────────────────────────────────────────────────────
+// ── Refresh logic ────────────────────────────────────────────────────────────
 async function tryRefreshOnce(): Promise<string | null> {
   const [refreshToken, uid] = await Promise.all([getRefreshToken(), getUserId()]);
   if (!refreshToken || !uid) return null;
@@ -79,6 +104,7 @@ async function tryRefreshOnce(): Promise<string | null> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ uid: Number(uid), refreshToken }),
+    credentials: 'include',
   });
   if (!res.ok) return null;
 
@@ -97,7 +123,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   let token = await getAccessToken();
   let res = await doFetch(path, options, token || undefined);
 
-  // 401 Unauthorized 처리: access token 만료 시 refresh 시도
+  // 401 → refresh 한번만 시도
   if (res.status === 401) {
     token = await tryRefreshOnce();
     if (token) {
@@ -111,20 +137,29 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 export function apiGet(path: string) {
   return apiFetch(path, { method: 'GET' });
 }
+
 export function apiPost(path: string, body?: any) {
   return apiFetch(path, {
     method: 'POST',
     body: body && !(body instanceof FormData) ? JSON.stringify(body) : body,
   });
 }
+
 export function apiPut(path: string, body?: any) {
   return apiFetch(path, {
     method: 'PUT',
     body: body && !(body instanceof FormData) ? JSON.stringify(body) : body,
   });
 }
-export function apiDelete(path: string) {
-  return apiFetch(path, { method: 'DELETE' });
+
+// ⬇️ DELETE도 바디를 선택적으로 보낼 수 있도록 확장
+export function apiDelete(path: string, body?: any) {
+  return apiFetch(path, {
+    method: 'DELETE',
+    ...(body !== undefined
+      ? { body: body && !(body instanceof FormData) ? JSON.stringify(body) : body }
+      : {}),
+  });
 }
 
 // ── JSON convenience ─────────────────────────────────────────────────────────
@@ -143,8 +178,8 @@ export async function apiPutJSON<T = any>(path: string, body?: any): Promise<T> 
   if (!res.ok) throw await toApiError(res);
   return (await safeJson(res)) as T;
 }
-export async function apiDeleteJSON<T = any>(path: string): Promise<T> {
-  const res = await apiDelete(path);
+export async function apiDeleteJSON<T = any>(path: string, body?: any): Promise<T> {
+  const res = await apiDelete(path, body);
   if (!res.ok) throw await toApiError(res);
   return (await safeJson(res)) as T;
 }

@@ -1,5 +1,5 @@
 // app/calendarEdit.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,12 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { apiGetJSON, apiPutJSON } from './lib/api';
 
 const COLOR_PALETTE = [
   '#F59CA9', '#F43F5E', '#EC4899', '#E11D48',
@@ -25,6 +27,8 @@ const COLOR_PALETTE = [
   '#8B5CF6', '#7C3AED', '#A855F7',
 ];
 
+type SelectItem = { id: string; name: string };
+
 export default function CalendarEdit() {
   const router = useRouter();
   const raw = useLocalSearchParams<{
@@ -33,7 +37,7 @@ export default function CalendarEdit() {
     title?: string | string[];
     start?: string | string[];
     end?: string | string[];
-    member?: string | string[];   // 콤마 구분 문자열일 수 있음
+    member?: string | string[];
     color?: string | string[];
     note?: string | string[];
   }>();
@@ -41,7 +45,8 @@ export default function CalendarEdit() {
   const getStr = (v?: string | string[]) => (typeof v === 'string' ? v : v?.[0] ?? '');
 
   // ---- 기존 값 수집 ----
-  const id      = getStr(raw.id);
+  const idRaw   = getStr(raw.id);
+  const apiId   = String(idRaw).split('-')[0]; // "1755968538-2" → "1755968538"
   const dateStr = getStr(raw.date);
   const title0  = getStr(raw.title);
   const start0  = getStr(raw.start) || '09:00';
@@ -60,7 +65,7 @@ export default function CalendarEdit() {
 
   const baseDate = dateStr || todayStr;
 
-  // 문자열 member → 배열로 변환(“A, B, C”만 분해, “이윤서 외 3명”은 그대로 한 항목)
+  // 문자열 member → 배열
   const initialMembers = useMemo(() => {
     if (!member0) return [];
     if (member0.includes(' 외 ')) return [member0];
@@ -68,38 +73,73 @@ export default function CalendarEdit() {
   }, [member0]);
 
   // ---- 상태 ----
-  const [title, setTitle]   = useState(title0);
-  const [note, setNote]     = useState(note0);
-  const [color, setColor]   = useState(color0);
+  const [title, setTitle]     = useState(title0);
+  const [note, setNote]       = useState(note0);
+  const [color, setColor]     = useState(color0);
   const [startDT, setStartDT] = useState(() => strToDate(baseDate, start0));
   const [endDT,   setEndDT]   = useState(() => strToDate(baseDate, end0));
 
-  // 멤버(새 화면과 동일 메커니즘)
+  // 멤버(표시용 이름)
   const [members, setMembers] = useState<string[]>(initialMembers);
   const [memberInput, setMemberInput] = useState('');
-  const [modalVisible, setModalVisible] = useState(false);
-  const [friendList, setFriendList] = useState<{ id: string, name: string }[]>([]);
-  const [groupList, setGroupList] = useState<{ id: string, name: string }[]>([]);
-  const [selected, setSelected] = useState<{ id: string, name: string }[]>([]);
 
-  const openSelectModal = async () => {
-    // 실제 API 연동 시 여기서 불러오면 됨
-    setFriendList([
-      { id: 'f1', name: '홍길동' },
-      { id: 'f2', name: '김철수' },
-      { id: 'f3', name: '이영희' },
-    ]);
-    setGroupList([
-      { id: 'g1', name: '스터디모임' },
-      { id: 'g2', name: '동아리' },
-    ]);
+  // 모달 & 리스트
+  const [modalVisible, setModalVisible] = useState(false);
+  const [friendList, setFriendList] = useState<SelectItem[]>([]);
+  const [groupList, setGroupList] = useState<SelectItem[]>([]);
+  const [selected, setSelected] = useState<SelectItem[]>([]);
+  const [loadingLists, setLoadingLists] = useState(false);
+
+  // 서버로 보낼 실제 사용자 ID(숫자). 모달에서 '친구'만 반영.
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  // --- 친구/그룹 불러오기 (id prefix로 충돌 방지)
+  const loadFriends = useCallback(async () => {
+    const data = await apiGetJSON<any>('/api/friends/list');
+    const next: SelectItem[] = (data?.friends ?? []).map((f: any) => ({
+      id: `friend:${String(f.uid)}`,
+      name: String(f.name ?? ''),
+    }));
+    setFriendList(next);
+  }, []);
+
+  const loadGroups = useCallback(async () => {
+    const data = await apiGetJSON<any>('/api/group/grouplist');
+    const next: SelectItem[] = (data?.grouplist ?? []).map((g: any) => ({
+      id: `group:${String(g.id)}`,
+      name: String(g.name ?? ''),
+    }));
+    setGroupList(next);
+  }, []);
+
+  const openSelectModal = useCallback(async () => {
     setSelected([]);
     setModalVisible(true);
-  };
+    setLoadingLists(true);
+    try {
+      await Promise.all([loadFriends(), loadGroups()]);
+    } catch (err) {
+      console.error('친구/그룹 목록 불러오기 실패:', err);
+      alertWebOrNative('불러오기 실패', '친구/그룹 정보를 불러오지 못했습니다.');
+    } finally {
+      setLoadingLists(false);
+    }
+  }, [loadFriends, loadGroups]);
 
+  // 모달의 선택을 화면과 payload 모두에 반영
   const addSelectedMembers = () => {
     const names = selected.map(s => s.name);
     setMembers(prev => Array.from(new Set([...prev, ...names])));
+
+    const friendIds = selected
+      .filter(s => s.id.startsWith('friend:'))
+      .map(s => Number(s.id.split(':')[1]))
+      .filter(n => Number.isFinite(n));
+
+    if (friendIds.length) {
+      setSelectedUserIds(prev => Array.from(new Set([...prev, ...friendIds])));
+    }
     setModalVisible(false);
   };
 
@@ -109,44 +149,75 @@ export default function CalendarEdit() {
       setMembers([...members, name]);
       setMemberInput('');
     }
+    // 직접 입력한 이름은 서버 users 배열에 반영할 id가 없으므로 표시만 합니다.
   };
 
   const removeMember = (name: string) => {
     setMembers(members.filter(m => m !== name));
+    // 표시만 제거. 선택했던 friend 라면 id도 제거
+    // (동명이인 처리 불가하니 best-effort)
+    // 이름-아이디 매핑이 없어서 여기서는 건드리지 않습니다.
   };
 
-  // 저장
+  // ─── 저장: PUT /api/calendar/:id ───
   const onSave = async () => {
+    if (!apiId) {
+      return alertWebOrNative('오류', '유효하지 않은 일정 ID입니다.');
+    }
     if (!title.trim()) {
-      Alert.alert('제목을 입력하세요.');
-      return;
+      return alertWebOrNative('안내', '제목을 입력하세요.');
     }
     const valid = !Number.isNaN(startDT.getTime()) && !Number.isNaN(endDT.getTime());
     if (!valid) {
-      Alert.alert('날짜/시간을 선택하세요.');
-      return;
+      return alertWebOrNative('안내', '날짜/시간을 선택하세요.');
     }
     if (endDT <= startDT) {
-      Alert.alert('종료 시간은 시작 시간보다 커야 합니다.');
-      return;
+      return alertWebOrNative('안내', '종료 시간은 시작 시간보다 커야 합니다.');
     }
 
-    // TODO: 실제 수정 API 연동
-    // await api.put(`/events/${id}`, payload)
+    const payload: {
+      color?: string;
+      memo?: string;
+      users?: number[];
+      start?: number;
+      end?: number;
+    } = {
+      color,
+      memo: (note || '').trim() || undefined,          // API 키는 memo
+      start: Math.floor(startDT.getTime() / 1000),     // unixtime(초)
+      end:   Math.floor(endDT.getTime()   / 1000),
+    };
+    if (selectedUserIds.length > 0) payload.users = selectedUserIds;
 
-    router.replace({
-      pathname: '/calendarDetail',
-      params: {
-        id,
-        date: startDT.toISOString().slice(0, 10),
-        title: title.trim(),
-        start: formatTime(startDT),
-        end: formatTime(endDT),
-        member: members.join(', '), // detail은 문자열로 받으므로 합쳐서 전달
-        color,
-        note: (note || '').trim(),
-      },
-    });
+    try {
+      setSaving(true);
+      await apiPutJSON(`/api/calendar/${apiId}`, payload);
+
+      alertWebOrNative('저장 완료', '일정을 수정했어요.');
+      // 상세 화면으로 갱신된 값 전달
+      router.replace({
+        pathname: '/calendarDetail',
+        params: {
+          id: apiId,
+          date: startDT.toISOString().slice(0, 10),
+          title: title.trim(),              // 서버 PUT 스펙에 name이 없어 로컬로만 반영
+          start: formatTime(startDT),
+          end: formatTime(endDT),
+          member: members.join(', '),
+          color,
+          note: (note || '').trim(),
+        },
+      });
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      alertWebOrNative(
+        '저장 실패',
+        `${msg}\n\n요청: PUT /api/calendar/${apiId}\nusers: ${JSON.stringify(payload.users ?? [])}`
+      );
+      console.error('PUT /api/calendar/:id 실패', { apiId, payload, error: e });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -197,7 +268,7 @@ export default function CalendarEdit() {
             />
           </View>
 
-          {/* 멤버 (캘린더 New와 동일) */}
+          {/* 멤버 */}
           <SectionDivider />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <SectionIcon name="people-outline" />
@@ -310,11 +381,13 @@ export default function CalendarEdit() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <Pressable
               onPress={() => router.back()}
+              disabled={saving}
               style={({ pressed }) => ({
                 flex: 1, paddingVertical: 12, borderRadius: 22,
                 borderWidth: 1, borderColor: '#111827',
                 backgroundColor: pressed ? '#F3F4F6' : '#fff',
                 alignItems: 'center', justifyContent: 'center',
+                opacity: saving ? 0.6 : 1,
               })}
             >
               <Text style={{ color: '#111827', fontWeight: '700' }}>취소</Text>
@@ -322,19 +395,21 @@ export default function CalendarEdit() {
 
             <Pressable
               onPress={onSave}
+              disabled={saving}
               style={({ pressed }) => ({
                 flex: 1, paddingVertical: 12, borderRadius: 22,
-                backgroundColor: pressed ? '#fb7185' : '#F43F5E',
+                backgroundColor: saving ? '#FCA5A5' : pressed ? '#fb7185' : '#F43F5E',
                 alignItems: 'center', justifyContent: 'center',
+                opacity: saving ? 0.9 : 1,
               })}
             >
-              <Text style={{ color: '#fff', fontWeight: '700' }}>저장</Text>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>저장</Text>}
             </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
 
-      {/* 친구/그룹 선택 모달 (New와 동일) */}
+      {/* 친구/그룹 선택 모달 */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -345,49 +420,56 @@ export default function CalendarEdit() {
           <View style={{ width: '85%', backgroundColor: '#fff', borderRadius: 18, padding: 18, maxHeight: '80%' }}>
             <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 12 }}>친구/그룹 선택</Text>
 
-            <ScrollView style={{ maxHeight: 300 }}>
-              <Text style={{ fontWeight: '600', marginBottom: 6 }}>친구</Text>
-              {friendList.length === 0 && <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>친구 없음</Text>}
-              {friendList.map((f) => (
-                <Pressable
-                  key={`friend-${f.id}`}
-                  onPress={() => {
-                    if (selected.some(s => s.id === f.id)) setSelected(selected.filter(s => s.id !== f.id));
-                    else setSelected([...selected, f]);
-                  }}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
-                >
-                  <Ionicons
-                    name={selected.some(s => s.id === f.id) ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color="#F43F5E"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={{ fontSize: 16 }}>{f.name}</Text>
-                </Pressable>
-              ))}
+            {loadingLists ? (
+              <View style={{ paddingVertical: 24, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator />
+                <Text style={{ marginTop: 8, color: '#6B7280' }}>불러오는 중…</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 300 }}>
+                <Text style={{ fontWeight: '600', marginBottom: 6 }}>친구</Text>
+                {friendList.length === 0 && <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>친구 없음</Text>}
+                {friendList.map((f) => (
+                  <Pressable
+                    key={`friend-${f.id}`}
+                    onPress={() => {
+                      if (selected.some(s => s.id === f.id)) setSelected(selected.filter(s => s.id !== f.id));
+                      else setSelected([...selected, f]);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                  >
+                    <Ionicons
+                      name={selected.some(s => s.id === f.id) ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color="#F43F5E"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={{ fontSize: 16 }}>{f.name}</Text>
+                  </Pressable>
+                ))}
 
-              <Text style={{ fontWeight: '600', marginTop: 16, marginBottom: 6 }}>그룹</Text>
-              {groupList.length === 0 && <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>그룹 없음</Text>}
-              {groupList.map((g) => (
-                <Pressable
-                  key={`group-${g.id}`}
-                  onPress={() => {
-                    if (selected.some(s => s.id === g.id)) setSelected(selected.filter(s => s.id !== g.id));
-                    else setSelected([...selected, g]);
-                  }}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
-                >
-                  <Ionicons
-                    name={selected.some(s => s.id === g.id) ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color="#2563EB"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={{ fontSize: 16 }}>{g.name}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+                <Text style={{ fontWeight: '600', marginTop: 16, marginBottom: 6 }}>그룹</Text>
+                {groupList.length === 0 && <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>그룹 없음</Text>}
+                {groupList.map((g) => (
+                  <Pressable
+                    key={`group-${g.id}`}
+                    onPress={() => {
+                      if (selected.some(s => s.id === g.id)) setSelected(selected.filter(s => s.id !== g.id));
+                      else setSelected([...selected, g]);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                  >
+                    <Ionicons
+                      name={selected.some(s => s.id === g.id) ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color="#2563EB"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={{ fontSize: 16 }}>{g.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
 
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 18 }}>
               <Pressable
@@ -398,7 +480,8 @@ export default function CalendarEdit() {
               </Pressable>
               <Pressable
                 onPress={addSelectedMembers}
-                style={{ paddingVertical: 8, paddingHorizontal: 18, borderRadius: 16, backgroundColor: '#F43F5E' }}
+                disabled={loadingLists}
+                style={{ paddingVertical: 8, paddingHorizontal: 18, borderRadius: 16, backgroundColor: loadingLists ? '#FCA5A5' : '#F43F5E' }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>추가하기</Text>
               </Pressable>
@@ -521,4 +604,10 @@ function addMinutes(d: Date, mins: number) {
   const n = new Date(d);
   n.setMinutes(n.getMinutes() + mins);
   return n;
+}
+
+// 공용: 웹/네이티브 알림
+function alertWebOrNative(title: string, message: string) {
+  if (Platform.OS === 'web') window.alert(`${title}: ${message}`);
+  else Alert.alert(title, message);
 }
