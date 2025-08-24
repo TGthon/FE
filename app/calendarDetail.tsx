@@ -1,6 +1,6 @@
 // app/calendarDetail.tsx
 import React from 'react';
-import { View, Text, Pressable, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, Pressable, Alert, ScrollView, Platform, BackHandler } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiDeleteJSON } from './lib/api';
@@ -66,12 +66,21 @@ export default function CalendarDetail() {
     try {
       await apiDeleteJSON(`/api/calendar/${id}`);
       notify('삭제 완료', '일정을 삭제했습니다.');
-      router.back();
+      router.replace('/(tabs)/calendar');
     } catch (e: any) {
       // 서버에서 내려준 메시지 그대로 노출(디버깅 도움)
       notify('삭제 실패', e?.message ?? '요청 처리 중 오류가 발생했습니다.');
     }
   };
+
+  React.useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      router.replace('/(tabs)/calendar');
+      return true; // 기본 뒤로가기 동작 막기
+    });
+    return () => sub.remove();
+  }, [router]);
+
 
   return (
     <>
@@ -80,6 +89,11 @@ export default function CalendarDetail() {
           title: title,
           headerTitleStyle: { fontSize: 24, fontWeight: '700' },
           headerTitleAlign: 'center',
+          headerLeft: () => (
+            <Pressable onPress={() => router.replace('/(tabs)/calendar')} style={{ paddingHorizontal: 12 }}>
+              <Ionicons name="chevron-back" size={24} color="#111827" />
+            </Pressable>
+          ),
         }}
       />
 

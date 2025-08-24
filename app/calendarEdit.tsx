@@ -161,19 +161,11 @@ export default function CalendarEdit() {
 
   // ─── 저장: PUT /api/calendar/:id ───
   const onSave = async () => {
-    if (!apiId) {
-      return alertWebOrNative('오류', '유효하지 않은 일정 ID입니다.');
-    }
-    if (!title.trim()) {
-      return alertWebOrNative('안내', '제목을 입력하세요.');
-    }
+    if (!apiId) return alertWebOrNative('오류', '유효하지 않은 일정 ID입니다.');
+    if (!title.trim()) return alertWebOrNative('안내', '제목을 입력하세요.');
     const valid = !Number.isNaN(startDT.getTime()) && !Number.isNaN(endDT.getTime());
-    if (!valid) {
-      return alertWebOrNative('안내', '날짜/시간을 선택하세요.');
-    }
-    if (endDT <= startDT) {
-      return alertWebOrNative('안내', '종료 시간은 시작 시간보다 커야 합니다.');
-    }
+    if (!valid) return alertWebOrNative('안내', '날짜/시간을 선택하세요.');
+    if (endDT <= startDT) return alertWebOrNative('안내', '종료 시간은 시작 시간보다 커야 합니다.');
 
     const payload: {
       color?: string;
@@ -183,9 +175,9 @@ export default function CalendarEdit() {
       end?: number;
     } = {
       color,
-      memo: (note || '').trim() || undefined,          // API 키는 memo
-      start: Math.floor(startDT.getTime() / 1000),     // unixtime(초)
-      end:   Math.floor(endDT.getTime()   / 1000),
+      memo: (note || '').trim() || undefined,
+      start: Math.floor(startDT.getTime() / 1000),
+      end: Math.floor(endDT.getTime() / 1000),
     };
     if (selectedUserIds.length > 0) payload.users = selectedUserIds;
 
@@ -193,21 +185,26 @@ export default function CalendarEdit() {
       setSaving(true);
       await apiPutJSON(`/api/calendar/${apiId}`, payload);
 
-      alertWebOrNative('저장 완료', '일정을 수정했어요.');
-      // 상세 화면으로 갱신된 값 전달
-      router.replace({
-        pathname: '/calendarDetail',
-        params: {
-          id: apiId,
-          date: startDT.toISOString().slice(0, 10),
-          title: title.trim(),              // 서버 PUT 스펙에 name이 없어 로컬로만 반영
-          start: formatTime(startDT),
-          end: formatTime(endDT),
-          member: members.join(', '),
-          color,
-          note: (note || '').trim(),
-        },
-      });
+      const params = {
+        id: idRaw || apiId, // 상세 화면에서 쓰던 원래 id 포맷 유지
+        date: startDT.toISOString().slice(0, 10),
+        title: title.trim(),
+        start: formatTime(startDT),
+        end: formatTime(endDT),
+        member: members.join(', '),
+        color,
+        note: (note || '').trim(),
+      };
+
+      // ✓ 수정 완료 후 상세 화면으로 이동 (뒤로가기 대신 replace)
+      if (Platform.OS === 'web') {
+        window.alert('저장 완료\n\n일정을 수정했어요.');
+        router.replace({ pathname: '/calendarDetail', params });
+      } else {
+        Alert.alert('저장 완료', '일정을 수정했어요.', [
+          { text: '확인', onPress: () => router.replace({ pathname: '/calendarDetail', params }) },
+        ]);
+      }
     } catch (e: any) {
       const msg = e?.message ?? String(e);
       alertWebOrNative(
@@ -219,6 +216,7 @@ export default function CalendarEdit() {
       setSaving(false);
     }
   };
+
 
   return (
     <>
