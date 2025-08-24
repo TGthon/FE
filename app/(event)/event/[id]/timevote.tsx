@@ -12,6 +12,7 @@ import {
   GestureResponderEvent,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { apiPostJSON } from '../../../lib/api'; // ⬅️ API 연결
 
 /** 투표 모드 */
 type VoteMode = 'possible' | 'impossible';
@@ -64,21 +65,19 @@ export default function TimeVoteScreen() {
   const measureRef = useRef({ px: 0, py: 0, w: 0, h: 0 });
 
   const doMeasure = useCallback(() => {
-    // measure는 레이아웃 후 호출 필요
     touchAreaRef.current?.measure?.((_x, _y, w, h, px, py) => {
       measureRef.current = { px: px ?? 0, py: py ?? 0, w: w ?? 0, h: h ?? 0 };
     });
   }, []);
 
   const onTouchAreaLayout = useCallback(() => {
-    // 레이아웃 직후/회전 등에서 재측정
     requestAnimationFrame(doMeasure);
     setTimeout(doMeasure, 0);
   }, [doMeasure]);
 
   useEffect(() => {
-    const id = setTimeout(doMeasure, 50);
-    return () => clearTimeout(id);
+    const tid = setTimeout(doMeasure, 50);
+    return () => clearTimeout(tid);
   }, [winW, winH, doMeasure]);
 
   const keyOf = (row: number, col: number) => `${pad(row)}:${col === 0 ? '00' : '30'}`;
@@ -152,7 +151,7 @@ export default function TimeVoteScreen() {
     [mode, eventToCell, toggleApplyAt]
   );
 
-  /** 셀 배경 색: 내 선택만 반영 (가능=핑크, 불가능=회색, 미선택=흰색) */
+  /** 셀 배경 색 */
   const fillFor = useCallback(
     (key: CellKey) => {
       const v = myVotes[key];
@@ -163,23 +162,38 @@ export default function TimeVoteScreen() {
     [myVotes]
   );
 
-  /** 저장(예시): 서버 포맷으로 변환 후 제출 → 성공 시 이전 화면 */
+  const [saving, setSaving] = useState(false);
+
+  /** 저장: 서버 포맷(time: unixtime[sec], type: 'P' | 'I')으로 변환 후 제출 */
   const dirty = Object.keys(myVotes).length > 0;
   const handleSubmit = async () => {
+    if (saving) return;
     if (!id || !date) {
       Alert.alert('오류', '그룹 또는 날짜 정보가 없습니다.');
       return;
     }
+    if (!dirty) {
+      Alert.alert('안내', '선택한 칸이 없습니다.');
+      return;
+    }
+
+    // 'HH:mm' → Unix seconds (local time) 로 안전 변환
     const payload = Object.entries(myVotes).map(([hhmm, m]) => ({
-      datetime: `${date}T${hhmm}`,
-      status: m === 'possible' ? 'preferred' : 'impossible',
+      time: toUnixSeconds(date, hhmm),
+      type: m === 'possible' ? 'P' : 'I',
     }));
+
     try {
-      // TODO: 실제 API 호출
-      // await apiPostJSON(`/api/event/${id}/time-vote`, payload);
-      router.back();
+      setSaving(true);
+      await apiPostJSON(`/api/vote/${id}`, payload);
+      Alert.alert('완료', '투표가 저장되었습니다.');
+      // 선택 초기화(옵션)
+      setMyVotes({});
+      router.back(); // 돌아가면 EventDetail에서 포커스 갱신 훅이 있으면 재로딩됨
     } catch (e: any) {
       Alert.alert('저장 실패', e?.message ?? '잠시 후 다시 시도해주세요.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -198,16 +212,18 @@ export default function TimeVoteScreen() {
           headerRight: () => (
             <Pressable
               onPress={handleSubmit}
-              disabled={!dirty}
+              disabled={!dirty || saving}
               style={({ pressed }) => ({
                 paddingHorizontal: 14,
                 paddingVertical: 8,
                 borderRadius: 999,
-                backgroundColor: dirty ? '#F45F62' : '#FBD5D5',
+                backgroundColor: !dirty || saving ? '#FBD5D5' : '#F45F62',
                 opacity: pressed ? 0.9 : 1,
               })}
             >
-              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>투표하기</Text>
+              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
+                {saving ? '저장 중…' : '투표하기'}
+              </Text>
             </Pressable>
           ),
         }}
@@ -265,9 +281,9 @@ export default function TimeVoteScreen() {
           {/* 셀 영역 (터치/드래그 처리) */}
           <View
             ref={touchAreaRef}
-            collapsable={false}            // Android measure 안정화
+            collapsable={false}
             onLayout={onTouchAreaLayout}
-            {...panResponder.panHandlers}  // PanResponder 연결
+            {...panResponder.panHandlers}
             style={{ width: CELL_AREA_W }}
           >
             {keys.map(([k00, k30], rowIdx) => (
@@ -305,15 +321,15 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
     borderRadius: RADIUS,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    overflow: 'hidden' as const, // 클리핑/픽셀 잔상 방지
+    overflow: 'hidden' as const,
   };
 
   const labelStyle = (active: boolean) => ({
     fontSize: 16,
     fontWeight: '700' as const,
-    lineHeight: 22,              // fontSize보다 살짝 크게: 클리핑 방지
-    includeFontPadding: false,   // ANDROID: 글자 상단 여백 제거(깎임 방지)
-    textAlignVertical: 'center' as const, // ANDROID
+    lineHeight: 22,
+    includeFontPadding: false,
+    textAlignVertical: 'center' as const,
     color: active ? '#111827' : '#6B7280',
     textAlign: 'center' as const,
   });
@@ -331,11 +347,7 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
           marginRight: 12,
         })}
       >
-        <Text
-          style={labelStyle(mode === 'possible')}
-          numberOfLines={1}
-          allowFontScaling={false} // 시스템 글자크기 확대 시 버튼 클리핑 방지
-        >
+        <Text style={labelStyle(mode === 'possible')} numberOfLines={1} allowFontScaling={false}>
           가능
         </Text>
       </Pressable>
@@ -350,18 +362,13 @@ function ModeCards({ mode, onChange }: { mode: VoteMode; onChange: (m: VoteMode)
           opacity: pressed ? 0.9 : 1,
         })}
       >
-        <Text
-          style={labelStyle(mode === 'impossible')}
-          numberOfLines={1}
-          allowFontScaling={false}
-        >
+        <Text style={labelStyle(mode === 'impossible')} numberOfLines={1} allowFontScaling={false}>
           불가능
         </Text>
       </Pressable>
     </View>
   );
 }
-
 
 /** 셀: 칠해진 칸이면 선을 흰색(#FFF)으로, Hairline로 이음새 최소화 */
 function Cell({ width, height, color }: { width: number; height: number; color: string }) {
@@ -392,4 +399,12 @@ function formatKorean(dateStr: string) {
   } catch {
     return dateStr;
   }
+}
+
+/** 안전한 로컬 시각 → 유닉스초 변환 */
+function toUnixSeconds(ymd: string, hhmm: string) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const [hh, mm] = hhmm.split(':').map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1, hh ?? 0, mm ?? 0, 0, 0); // local time
+  return Math.floor(dt.getTime() / 1000);
 }
