@@ -35,7 +35,7 @@ export default function EventListScreen() {
       .map((e: any) => {
         if (!e?.id || !e?.title) return null;
         const s = String(e.status);
-        const status: EventItem['status'] = s === '투표 완료' || s === 'done' ? '투표 완료' : '투표 전';
+        const status: EventItem['status'] = e.status ? '투표 완료' : '투표 전';
         return {
           id: String(e.id),
           title: String(e.title),
