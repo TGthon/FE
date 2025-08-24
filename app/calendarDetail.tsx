@@ -1,92 +1,141 @@
 // app/calendarDetail.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Alert, ScrollView, Platform, BackHandler } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { apiDeleteJSON } from './lib/api';
+import { apiDeleteJSON, apiGetJSON } from './lib/api';
+
+type CalendarResp = {
+  id: number | string;
+  start: number;   // epoch seconds
+  end: number;     // epoch seconds
+  color?: string;
+  title?: string;
+  note?: string;
+  members?: string[]; // 이름 문자열 배열
+};
 
 export default function CalendarDetail() {
   const router = useRouter();
-  const raw = useLocalSearchParams<{
-    id?: string | string[];
-    date?: string | string[];
-    title?: string | string[];
-    start?: string | string[];
-    end?: string | string[];
-    member?: string | string[];
-    color?: string | string[];
-    note?: string | string[];
-  }>();
+  const raw = useLocalSearchParams<{ id?: string | string[] }>();
 
   const getStr = (v?: string | string[]) => (typeof v === 'string' ? v : v?.[0] ?? '');
-  const id = getStr(raw.id) // API 경로용 ID
-  const date = getStr(raw.date);
-  const title = getStr(raw.title) || '일정';
-  const start = getStr(raw.start);
-  const end = getStr(raw.end);
-  const member = getStr(raw.member);
-  const color = getStr(raw.color) || '#F59CA9';
-  const note = getStr(raw.note);
+  const idParam = getStr(raw.id);
+  const apiId = idParam ? String(idParam).split('-')[0] : ''; // "1755968538-2" 같은 케이스 대비
 
-  const dateLabel = formatKorean(date) + (start && end ? `  ${start} - ${end}` : '');
+  // 화면 표시용 상태 (처음엔 빈값, API로 채움)
+  const [title, setTitle] = useState('일정');
+  const [dateStr, setDateStr] = useState('');  // YYYY-MM-DD
+  const [startHM, setStartHM] = useState('');  // HH:mm
+  const [endHM, setEndHM] = useState('');      // HH:mm
+  const [memberLabel, setMemberLabel] = useState('');
+  const [color, setColor] = useState('#F59CA9');
+  const [note, setNote] = useState<string | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
 
-  // 플랫폼별 확인 다이얼로그
-  const confirmAsync = (title: string, message: string) => {
-    if (Platform.OS === 'web') return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-    return new Promise<boolean>((resolve) => {
-      Alert.alert(
-        title,
-        message,
-        [
-          { text: '취소', style: 'cancel', onPress: () => resolve(false) },
-          { text: '삭제', style: 'destructive', onPress: () => resolve(true) },
-        ],
-        { cancelable: true }
-      );
-    });
-  };
+  const dateLabel =
+    (dateStr ? formatKorean(dateStr) : '') + (startHM && endHM ? `  ${startHM} - ${endHM}` : '');
 
-  const notify = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}: ${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
-  };
+  // 공용 알림
+  const notify = (t: string, m: string) =>
+    Platform.OS === 'web' ? window.alert(`${t}: ${m}`) : Alert.alert(t, m);
 
-    const handleDelete = async () => {
-    if (!id) {
-      notify('삭제 실패', `유효하지 않은 일정 ID입니다: "${id}"`);
-      return;
-    }
+  // 확인 다이얼로그
+  const confirmAsync = (t: string, m: string) =>
+    Platform.OS === 'web'
+      ? Promise.resolve(window.confirm(`${t}\n\n${m}`))
+      : new Promise<boolean>((resolve) => {
+          Alert.alert(
+            t,
+            m,
+            [
+              { text: '취소', style: 'cancel', onPress: () => resolve(false) },
+              { text: '삭제', style: 'destructive', onPress: () => resolve(true) },
+            ],
+            { cancelable: true }
+          );
+        });
 
-    const ok = await confirmAsync('삭제', '이 일정을 삭제할까요?');
-    if (!ok) return;
+  // 상세 조회
+  useEffect(() => {
+    if (!apiId) return;
+    let cancelled = false;
 
-    try {
-      await apiDeleteJSON(`/api/calendar/${id}`);
-      notify('삭제 완료', '일정을 삭제했습니다.');
-      router.replace('/(tabs)/calendar');
-    } catch (e: any) {
-      // 서버에서 내려준 메시지 그대로 노출(디버깅 도움)
-      notify('삭제 실패', e?.message ?? '요청 처리 중 오류가 발생했습니다.');
-    }
-  };
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await apiGetJSON<CalendarResp>(`/api/calendar/${apiId}`);
+        if (cancelled || !data) return;
 
-  React.useEffect(() => {
+        // 제목
+        setTitle(data.title || '일정');
+
+        // 시간 변환 (초 → ms)
+        if (Number.isFinite(data.start)) {
+          const d = new Date(Number(data.start) * 1000);
+          setDateStr(toYMD(d));
+          setStartHM(toHM(d));
+        }
+        if (Number.isFinite(data.end)) {
+          const d = new Date(Number(data.end) * 1000);
+          setEndHM(toHM(d));
+        }
+
+        // 색상/메모
+        if (data.color) setColor(data.color);
+        setNote(data.note || undefined);
+
+        // 멤버 문자열 조합
+        if (Array.isArray(data.members)) {
+          setMemberLabel(data.members.filter(Boolean).join(', '));
+        } else {
+          setMemberLabel('');
+        }
+      } catch (e: any) {
+        notify('불러오기 실패', e?.message ?? '일정 정보를 불러오지 못했어요.');
+        console.error('GET /api/calendar/:id 실패', e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiId]);
+
+  // 하드웨어 뒤로가기 → 캘린더 탭으로
+  useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       router.replace('/(tabs)/calendar');
-      return true; // 기본 뒤로가기 동작 막기
+      return true;
     });
     return () => sub.remove();
   }, [router]);
 
+  // 삭제
+  const handleDelete = async () => {
+    if (!apiId) {
+      notify('삭제 실패', `유효하지 않은 일정 ID입니다: "${apiId}"`);
+      return;
+    }
+    const ok = await confirmAsync('삭제', '이 일정을 삭제할까요?');
+    if (!ok) return;
+
+    try {
+      await apiDeleteJSON(`/api/calendar/${apiId}`);
+      notify('삭제 완료', '일정을 삭제했습니다.');
+      router.replace('/(tabs)/calendar');
+    } catch (e: any) {
+      notify('삭제 실패', e?.message ?? '요청 처리 중 오류가 발생했습니다.');
+    }
+  };
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: title,
+          title,
           headerTitleStyle: { fontSize: 24, fontWeight: '700' },
           headerTitleAlign: 'center',
           headerLeft: () => (
@@ -100,12 +149,14 @@ export default function CalendarDetail() {
       <View style={{ flex: 1, backgroundColor: '#fff' }}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
           <Row icon={<Ionicons name="calendar-outline" size={22} color="#111827" />}>
-            <Text style={{ fontSize: 16, color: '#111827' }}>{dateLabel}</Text>
+            <Text style={{ fontSize: 16, color: '#111827' }}>
+              {loading ? '불러오는 중…' : dateLabel || '—'}
+            </Text>
           </Row>
 
-          {member ? (
+          {memberLabel ? (
             <Row icon={<Ionicons name="people-outline" size={22} color="#111827" />}>
-              <Text style={{ fontSize: 16, color: '#111827' }}>{member}</Text>
+              <Text style={{ fontSize: 16, color: '#111827' }}>{memberLabel}</Text>
             </Row>
           ) : null}
 
@@ -149,7 +200,16 @@ export default function CalendarDetail() {
               onPress={() =>
                 router.push({
                   pathname: '/calendarEdit',
-                  params: { id, date, title, start, end, member, color, note },
+                  params: {
+                    id: apiId,
+                    date: dateStr,
+                    title,
+                    start: startHM,
+                    end: endHM,
+                    member: memberLabel,
+                    color,
+                    note: note ?? '',
+                  },
                 })
               }
               style={({ pressed }) => ({
@@ -189,6 +249,17 @@ function Row({ icon, children }: { icon: React.ReactNode; children: React.ReactN
   );
 }
 
+function toYMD(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function toHM(d: Date) {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
 function formatKorean(dateStr: string) {
   try {
     const d = new Date(dateStr + 'T00:00:00');
