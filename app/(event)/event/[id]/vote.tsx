@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, Alert, Platform } from 'react-native
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
+import { apiPostJSON } from '@/app/lib/api';
 
 // 투표 모드
 type VoteStatus = 'preferred' | 'non-preferred' | 'impossible';
@@ -55,12 +56,24 @@ export default function VoteScreen() {
     return result;
   }, [myVotes]);
 
+  function parseLocalDate(str: string) {
+    const [year, month, day] = str.split("-").map(Number);
+    return new Date(year, month - 1, day); // 월은 0부터 시작
+  }
+
   // 저장
   const submit = useCallback(async () => {
     const payload = Object.entries(myVotes).map(([date, status]) => ({ date, status }));
 
     // ⛔ 백엔드 연동 전: 목업 동작
     // TODO: 나중에 실제 API 연결
+    console.log(payload);
+
+    await apiPostJSON<any>(`/api/vote/${id}/day`, payload.map(({date, status}) => ({
+      time: parseLocalDate(date).getTime() / 1000,
+      type: status[0].toUpperCase()
+    })))
+
     const goDetail = () => router.replace({
         pathname: '/(event)/event/[id]',
         params: { id, title },
