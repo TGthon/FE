@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TextInput, Image, StyleSheet, Pressable, Alert, Modal, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from '@react-navigation/native';
 
 import {
   apiGetJSON,
@@ -27,34 +28,48 @@ export default function ProfileScreen() {
   const [loadingPic, setLoadingPic] = useState(false);
   const [savingName, setSavingName] = useState(false);
 
-  useEffect(() => {
-    const loadUserInfo = async () => {
-      try {
-        const profile: any = await apiGetJSON('/api/profile/me');
-        setName(profile?.name ?? '');
-        setEmail(profile?.email ?? '');
-        setPicture(profile?.picture ?? '');
+  const withBust = (url: string) => (url ? `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}` : url);
 
-        await AsyncStorage.setItem('userName', profile?.name ?? '');
-        await AsyncStorage.setItem('userEmail', profile?.email ?? '');
-        await AsyncStorage.setItem('userPicture', profile?.picture ?? '');
+  /** 프로필 불러오기 (포커스마다 호출) */
+  const loadUserInfo = useCallback(async () => {
+    try {
+      const profile: any = await apiGetJSON('/api/profile/me');
+      setName(profile?.name ?? '');
+      setEmail(profile?.email ?? '');
+      setPicture(profile?.picture ?? '');
 
-        if (profile?.id != null) {
-          await setUserId(String(profile.id));
-        }
-      } catch {
-        const [storedName, storedEmail, storedPicture] = await Promise.all([
-          AsyncStorage.getItem('userName'),
-          AsyncStorage.getItem('userEmail'),
-          AsyncStorage.getItem('userPicture'),
-        ]);
-        if (storedName) setName(storedName);
-        if (storedEmail) setEmail(storedEmail);
-        if (storedPicture) setPicture(storedPicture);
+      await AsyncStorage.setItem('userName', profile?.name ?? '');
+      await AsyncStorage.setItem('userEmail', profile?.email ?? '');
+      await AsyncStorage.setItem('userPicture', profile?.picture ?? '');
+
+      if (profile?.id != null) {
+        await setUserId(String(profile.id));
       }
-    };
-    loadUserInfo();
+    } catch {
+      // 오프라인/에러 시 로컬 캐시로 폴백
+      const [storedName, storedEmail, storedPicture] = await Promise.all([
+        AsyncStorage.getItem('userName'),
+        AsyncStorage.getItem('userEmail'),
+        AsyncStorage.getItem('userPicture'),
+      ]);
+      if (storedName) setName(storedName);
+      if (storedEmail) setEmail(storedEmail);
+      if (storedPicture) setPicture(storedPicture);
+    }
   }, []);
+
+  // 화면에 들어올 때마다 최신화
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        if (active) await loadUserInfo();
+      })();
+      return () => {
+        active = false;
+      };
+    }, [loadUserInfo])
+  );
 
   const handleSaveName = async () => {
     const newName = nameInput.trim();
@@ -70,6 +85,10 @@ export default function ProfileScreen() {
       setName(saved);
       await AsyncStorage.setItem('userName', saved);
       setEditName(false);
+
+      // 서버 기준으로 재동기화(레이스 방지)
+      await loadUserInfo();
+
       Alert.alert('완료', '이름이 변경되었습니다.');
     } catch (err: any) {
       Alert.alert('이름 변경 실패', err?.message ?? '서버와 통신 중 오류가 발생했습니다.');
@@ -79,9 +98,6 @@ export default function ProfileScreen() {
   };
 
   const handleChangePicture = async () => {
-    // 캐시 버스터
-    const withBust = (url: string) => (url ? `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}` : url);
-
     if (Platform.OS === 'web') {
       const input = document.createElement('input');
       input.type = 'file';
@@ -107,6 +123,8 @@ export default function ProfileScreen() {
           if (json?.picture) {
             setPicture(withBust(json.picture));
             await AsyncStorage.setItem('userPicture', json.picture);
+            // 서버 기준으로 재동기화
+            await loadUserInfo();
           } else {
             Alert.alert('업로드 실패', '프로필 사진 변경에 실패했습니다.');
           }
@@ -114,7 +132,6 @@ export default function ProfileScreen() {
           Alert.alert('업로드 실패', '프로필 사진 변경 중 오류가 발생했습니다.');
         } finally {
           setLoadingPic(false);
-          // 메모리 정리
           try { URL.revokeObjectURL(objUrl); } catch {}
         }
       };
@@ -143,6 +160,8 @@ export default function ProfileScreen() {
         if (json?.picture) {
           setPicture(withBust(json.picture));
           await AsyncStorage.setItem('userPicture', json.picture);
+          // 서버 기준으로 재동기화
+          await loadUserInfo();
         } else {
           Alert.alert('업로드 실패', '프로필 사진 변경에 실패했습니다.');
         }
@@ -250,11 +269,7 @@ export default function ProfileScreen() {
                 <Text style={{ color: '#111827', fontWeight: '600' }}>취소</Text>
               </Pressable>
               <Pressable
-                style={[
-                  styles.modalBtn,
-                  { backgroundColor: '#F43F5E' },
-                  savingName ? { opacity: 0.6 } : {},
-                ]}
+                style={[styles.modalBtn, { backgroundColor: '#F43F5E' }, savingName ? { opacity: 0.6 } : {}]}
                 onPress={handleSaveName}
                 disabled={savingName}
               >

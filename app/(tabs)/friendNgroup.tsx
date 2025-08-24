@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { apiDeleteJSON, apiGetJSON, apiPostJSON, getAccessToken } from "../lib/api";
 
 type FriendItem = {
@@ -30,47 +31,11 @@ type GroupItem = {
 };
 
 export default function FriendNGroupScreen() {
-  useEffect(() => {
-    const fetchFriends = async () => {
-
-      try {
-        const data = await apiGetJSON<any>('/api/friends/list')
-        setFriends(data.friends.map((f: any) => ({
-          uid: f.uid,
-          name: f.name,
-          email: f.email,
-          avatar: f.picture || "https://api.ldh.monster/images/default.jpg"
-        }))); // 프론트 상태에 저장
-      } catch (error) {
-        console.error("친구 목록 불러오기 실패:", error);
-      }
-    };
-
-    fetchFriends();
-
-
-    const fetchGroups = async () => {
-      try {
-        const data = await apiGetJSON<any>('/api/group/grouplist')
-        let grouplist = data.grouplist.map((group: any) => ({
-          ...group,
-          members: []
-        }))
-
-        console.log(grouplist)
-        setGroups(grouplist); // 프론트 상태에 저장
-      } catch (error) {
-        console.error("그룹 목록 불러오기 실패:", error);
-      }
-    };
-
-    fetchGroups();
-  }, []);
-
   const router = useRouter();
 
-  // 친구/그룹 데이터
+  // 서버 데이터
   const [groups, setGroups] = useState<GroupItem[]>([
+    // 필요 없으면 초기 더미는 비워도 됩니다.
     {
       id: "g1",
       name: "경희녀들",
@@ -82,7 +47,6 @@ export default function FriendNGroupScreen() {
       ],
     },
   ]);
-
   const [friends, setFriends] = useState<FriendItem[]>([
     { uid: "1", name: "김서연", email: "test1@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
     { uid: "2", name: "이윤서", email: "test2@gmail.com", avatar: "https://api.ldh.monster/images/default.jpg" },
@@ -102,9 +66,62 @@ export default function FriendNGroupScreen() {
   const [selectedGroup, setSelectedGroup] = useState<GroupItem | null>(null);
   const [selectedFriend, setSelectedFriend] = useState<FriendItem | null>(null);
 
+  /** ───────────── 데이터 로더 (포커스마다 실행) ───────────── */
+  const loadFriends = useCallback(async () => {
+    try {
+      const data = await apiGetJSON<any>("/api/friends/list");
+      const next = (data?.friends ?? []).map((f: any) => ({
+        uid: String(f.uid),
+        name: String(f.name ?? ""),
+        email: f.email,
+        avatar: f.picture || "https://api.ldh.monster/images/default.jpg",
+      })) as FriendItem[];
+      setFriends(next);
+    } catch (error) {
+      console.error("친구 목록 불러오기 실패:", error);
+    }
+  }, []);
+
+  const loadGroups = useCallback(async () => {
+    try {
+      const data = await apiGetJSON<any>("/api/group/grouplist");
+      const grouplist = (data?.grouplist ?? []).map((group: any) => ({
+        id: String(group.id),
+        name: String(group.name ?? ""),
+        event: group.event ?? undefined,
+        // 서버가 멤버를 내려주지 않으면 빈 배열
+        members: Array.isArray(group.members)
+          ? group.members.map((m: any) => ({
+              uid: String(m.uid),
+              name: String(m.name ?? ""),
+              email: m.email,
+              avatar: m.picture || "https://api.ldh.monster/images/default.jpg",
+            }))
+          : [],
+      })) as GroupItem[];
+      setGroups(grouplist);
+    } catch (error) {
+      console.error("그룹 목록 불러오기 실패:", error);
+    }
+  }, []);
+
+  // 화면에 들어올 때마다 최신 데이터로 갱신
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        await Promise.all([loadFriends(), loadGroups()]);
+      })();
+      return () => {
+        active = false;
+      };
+    }, [loadFriends, loadGroups])
+  );
+
+  /** ───────────── 액션들 ───────────── */
 
   // 그룹 추가
-  const handleAddGroup = async () => {
+  const handleAddGroup = useCallback(async () => {
     if (!newGroupName.trim()) {
       Alert.alert("실패", "그룹명을 입력해주세요.");
       return;
@@ -115,21 +132,22 @@ export default function FriendNGroupScreen() {
     }
 
     try {
-      const result = await apiPostJSON<any>('/api/group/groupadd', {
+      const result = await apiPostJSON<any>("/api/group/groupadd", {
         name: newGroupName,
-        memberIds: selectedMembers
+        memberIds: selectedMembers,
       });
 
-      // 서버에서 저장된 그룹 정보 반환 시 사용
+      // 임시로 로컬 추가
       const newGroup: GroupItem = {
-        id: result.groupId, // 서버에서 생성된 ID
+        id: String(result?.groupId ?? Date.now()),
         name: newGroupName,
         members: friends.filter((f) => selectedMembers.includes(f.uid)),
       };
+      setGroups((prev) => [newGroup, ...prev]);
 
-      console.log(groups);
-      console.log(newGroup);
-      setGroups((prev) => [...prev, newGroup]);
+      // 서버가 정리한 최신 상태로 다시 동기화
+      await loadGroups();
+
       setNewGroupName("");
       setSelectedMembers([]);
       setShowAddGroupModal(false);
@@ -138,40 +156,38 @@ export default function FriendNGroupScreen() {
       console.error("그룹 저장 오류:", error);
       Alert.alert("실패", "그룹 저장 중 문제가 발생했습니다.");
     }
-  };
+  }, [friends, newGroupName, selectedMembers, loadGroups]);
 
-
-  // 그룹 나가기
-  const handleLeaveGroup = (groupId: string) => {
+  // 그룹 나가기 (서버 API가 있다면 여기서 호출 후 loadGroups() 호출)
+  const handleLeaveGroup = useCallback((groupId: string) => {
     Alert.alert("그룹 나가기", "정말 이 그룹을 나가시겠습니까?", [
       { text: "취소", style: "cancel" },
       {
         text: "나가기",
         style: "destructive",
-        onPress: () => {
+        onPress: async () => {
+          // 로컬 즉시 반영
           setGroups((prev) => prev.filter((g) => g.id !== groupId));
           setSelectedGroup(null);
+          // TODO: await apiPostJSON('/api/group/leave', { groupId })
+          // await loadGroups();
         },
       },
     ]);
-  };
+  }, []);
 
   // 친구 추가
-  const handleAddFriend = async () => {
+  const handleAddFriend = useCallback(async () => {
     if (!newFriendEmail.trim()) {
       Alert.alert("실패", "이메일을 입력해주세요.");
       return;
     }
-
-    const exists = friends.find((f) => f.email === newFriendEmail);
-    if (exists) {
+    if (friends.find((f) => f.email === newFriendEmail)) {
       Alert.alert("실패", "이미 등록된 친구입니다.");
       return;
     }
 
     const token = await getAccessToken();
-    console.log("토큰:", token);
-
     if (!token) {
       Alert.alert("오류", "로그인이 필요합니다.");
       return;
@@ -179,29 +195,32 @@ export default function FriendNGroupScreen() {
 
     try {
       const data = await apiPostJSON<any>("https://api.ldh.monster/api/friends/add", {
-        friendEmail: newFriendEmail
+        friendEmail: newFriendEmail,
       });
 
-      //const addedFriend = data.friend;
-      const addedFriend = {
-        uid: data.friend.uid,
-        name: data.friend.name,
+      const addedFriend: FriendItem = {
+        uid: String(data.friend.uid),
+        name: String(data.friend.name ?? ""),
         email: data.friend.email,
-        avatar: data.friend.picture
-      }
+        avatar: data.friend.picture || "https://api.ldh.monster/images/default.jpg",
+      };
 
-      setFriends((prev) => [...prev, addedFriend]);
+      // 로컬 즉시 반영
+      setFriends((prev) => [addedFriend, ...prev]);
+
+      // 서버 최신 상태로 재동기화
+      await loadFriends();
+
       setNewFriendEmail("");
       setShowAddFriendModal(false);
       Alert.alert("성공", `${addedFriend.name}님을 친구로 추가했어요!`);
     } catch (error) {
       Alert.alert("오류", "네트워크 오류가 발생했습니다.");
     }
-  };
-
+  }, [friends, newFriendEmail, loadFriends]);
 
   // 친구 삭제
-  const handleDeleteFriend = (friendId: string) => {
+  const handleDeleteFriend = useCallback((friendId: string) => {
     Alert.alert("친구 삭제", "정말 이 친구를 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
       {
@@ -209,20 +228,22 @@ export default function FriendNGroupScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            // 백엔드에 삭제 요청
             await apiDeleteJSON<any>(`https://api.ldh.monster/api/friends/${friendId}`);
-
-            // 프론트 상태에서도 제거
+            // 로컬 즉시 반영
             setFriends((prev) => prev.filter((f) => f.uid !== friendId));
             setSelectedFriend(null);
+            // 서버 최신 상태로 재동기화
+            await loadFriends();
           } catch (error) {
             Alert.alert("오류", "친구 삭제 중 문제가 발생했어요.");
             console.error("삭제 실패:", error);
           }
         },
-      }
+      },
     ]);
-  };
+  }, [loadFriends]);
+
+  /** ───────────── 모달들 ───────────── */
 
   // 그룹 상세 팝업
   const GroupModal = () => (

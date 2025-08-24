@@ -1,9 +1,10 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, Alert, Modal, ActivityIndicator, Platform, Image } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import type { DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native'; // ⬅️ 포커스 진입 감지
 import EventRenameModal from '../../../components/EventRenameModal';
 import { apiPostJSON, apiDeleteJSON, apiGetJSON, apiPutJSON } from '../../../lib/api';
 
@@ -76,43 +77,44 @@ export default function EventDetail() {
     });
   };
 
-  // 이벤트 상세 불러오기
-  useEffect(() => {
+  /** ⬇️ 포커스 진입/재진입 시마다 이벤트 최신화 */
+  const refreshEvent = useCallback(async () => {
     if (!eventId) return;
-    let cancelled = false;
+    setLoadingEvent(true);
+    try {
+      const data = await apiGetJSON<EventResp>(`/api/event/${eventId}`);
 
-    (async () => {
-      setLoadingEvent(true);
-      try {
-        const data = await apiGetJSON<EventResp>(`/api/event/${eventId}`);
+      // 제목
+      if (data?.title) setFetchedTitle(data.title);
 
-        if (cancelled) return;
+      // 구성원
+      setMembers(Array.isArray(data?.users) ? data.users : []);
 
-        // 제목
-        if (data?.title) setFetchedTitle(data.title);
-
-        // 구성원
-        setMembers(Array.isArray(data?.users) ? data.users : []);
-
-        // 투표 → 화면용으로 매핑
-        const mapped: Vote[] = (data?.votes ?? []).map((v) => ({
-          userId: String(v.uid),
-          date: toYMD(new Date(v.date * 1000)),
-          status: v.type === 'P' ? 'preferred' : v.type === 'N' ? 'non-preferred' : 'impossible',
-        }));
-        setVotes(mapped);
-      } catch (e) {
-        console.warn('GET /api/event/:id 실패', e);
-        // 실패 시엔 그냥 비워두기(기존 집계는 0으로 처리됨)
-      } finally {
-        if (!cancelled) setLoadingEvent(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+      // 투표 → 화면용으로 매핑
+      const mapped: Vote[] = (data?.votes ?? []).map((v) => ({
+        userId: String(v.uid),
+        date: toYMD(new Date(v.date * 1000)),
+        status: v.type === 'P' ? 'preferred' : v.type === 'N' ? 'non-preferred' : 'impossible',
+      }));
+      setVotes(mapped);
+    } catch (e) {
+      console.warn('GET /api/event/:id 실패', e);
+    } finally {
+      setLoadingEvent(false);
+    }
   }, [eventId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        if (!cancelled) await refreshEvent();
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [refreshEvent])
+  );
 
   const applyRename = useCallback(async () => {
     if (!eventId) {
@@ -133,10 +135,12 @@ export default function EventDetail() {
       await apiPutJSON(`/api/event/${eventId}/name`, { name: next });
       setFetchedTitle(next);
       closeRename();
+      // 서버 기준 재동기화 (옵션)
+      await refreshEvent();
     } catch (e: any) {
       Alert.alert('실패', e?.message ?? '이름 변경에 실패했습니다.');
     }
-  }, [eventId, nameInput, fetchedTitle]);
+  }, [eventId, nameInput, fetchedTitle, refreshEvent]);
 
   /** 날짜별 집계 (API 투표 기반) */
   const aggByDate = useMemo<Record<string, DayAgg>>(() => {
@@ -226,8 +230,10 @@ export default function EventDetail() {
         Alert.alert('완료', `${ok}명 초대했어요.`);
         setInviteOpen(false);
         setPicked(new Set());
+        await refreshEvent(); // ⬅️ 성공 시 최신화
       } else if (ok > 0 && fail > 0) {
         Alert.alert('부분 완료', `${ok}명은 초대했고, ${fail}명은 실패했어요.`);
+        await refreshEvent();
       } else {
         Alert.alert('실패', '초대에 실패했어요. 잠시 후 다시 시도해 주세요.');
       }

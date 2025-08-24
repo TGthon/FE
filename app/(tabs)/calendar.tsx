@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable, FlatList, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Calendar } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import { apiGetJSON } from '../lib/api';
@@ -76,19 +77,7 @@ const FALLBACK_EVENTS: EventsByDate = {
   ],
 };
 
-/* ─ 백엔드 스키마 정규화 ─
-   입력: [
-     {
-       start: <seconds>,
-       end: <seconds>,
-       name: string,
-       groupName?: string,
-       users?: string[],
-       color?: string
-     }, ...
-   ]
-   출력: { 'YYYY-MM-DD': EventItem[] }
-*/
+/* ─ 백엔드 스키마 정규화 ─ */
 function normalizeFromBackend(list: any[]): EventsByDate {
   const map: EventsByDate = {};
   list.forEach((raw, idx) => {
@@ -103,15 +92,11 @@ function normalizeFromBackend(list: any[]): EventsByDate {
     const title = String(raw?.name ?? '제목없음');
     const color = String(raw?.color ?? '#3B82F6');
 
-    // member 표기: groupName 우선, 없으면 users 배열 요약
     let member: string | undefined;
     if (raw?.groupName) {
       member = String(raw.groupName);
     } else if (Array.isArray(raw?.users) && raw.users.length > 0) {
-      member =
-        raw.users.length <= 2
-          ? raw.users.join(', ')
-          : `${raw.users[0]} 외 ${raw.users.length - 1}명`;
+      member = raw.users.length <= 2 ? raw.users.join(', ') : `${raw.users[0]} 외 ${raw.users.length - 1}명`;
     }
 
     const item: EventItem = {
@@ -138,34 +123,39 @@ export default function CalendarHome() {
   const { height: winH } = Dimensions.get('window');
   const LIST_MAX_H = Math.max(180, Math.round(winH * 0.4));
 
-  // 선택된 날짜의 연/월 기준으로 캘린더 요청
-  useEffect(() => {
+  /** 포커스될 때와 selected 변경 시마다 최신화 */
+  const loadCalendar = useCallback(async () => {
     const { year, month } = ymOf(selected);
-    let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      try {
-        const qs = `?year=${year}&month=${month}`;
-        const payload = await apiGetJSON<any>(`/api/calendar${qs}`);
-
-        // 백엔드가 배열로 내려줌(위 스키마)
-        const normalized =
-          Array.isArray(payload) ? normalizeFromBackend(payload) : {};
-
-        if (!cancelled) setEventsByDate(normalized);
-      } catch (e) {
-        console.warn('GET /api/calendar 실패, 폴백 사용:', e);
-        if (!cancelled) setEventsByDate(FALLBACK_EVENTS);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
+    let active = true;
+    setLoading(true);
+    try {
+      const qs = `?year=${year}&month=${month}`;
+      const payload = await apiGetJSON<any>(`/api/calendar${qs}`);
+      const normalized = Array.isArray(payload) ? normalizeFromBackend(payload) : {};
+      if (active) setEventsByDate(normalized);
+    } catch (e) {
+      console.warn('GET /api/calendar 실패, 폴백 사용:', e);
+      if (active) setEventsByDate(FALLBACK_EVENTS);
+    } finally {
+      if (active) setLoading(false);
+    }
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, [selected]);
+
+  // 화면 포커스될 때마다 & 선택된 날짜가 바뀔 때마다 재로딩
+  useFocusEffect(
+    useCallback(() => {
+      let cleanup: undefined | (() => void);
+      (async () => {
+        cleanup = await loadCalendar();
+      })();
+      return () => {
+        cleanup && cleanup();
+      };
+    }, [loadCalendar])
+  );
 
   // 점/선택 표시
   const markedDates = useMemo(() => {
@@ -295,7 +285,7 @@ export default function CalendarHome() {
           <FlatList
             data={dayEvents}
             keyExtractor={(item) => item.id}
-            style={{ maxHeight: Math.max(180, Math.round(Dimensions.get('window').height * 0.4)) }}
+            style={{ maxHeight: LIST_MAX_H }}
             contentContainerStyle={{ paddingBottom: 12, gap: 10 }}
             renderItem={({ item }) => <EventRow item={item} onPress={() => openDetail(item)} />}
             ListEmptyComponent={
