@@ -65,8 +65,6 @@ export default function VoteScreen() {
   const submit = useCallback(async () => {
     const payload = Object.entries(myVotes).map(([date, status]) => ({ date, status }));
 
-    // ⛔ 백엔드 연동 전: 목업 동작
-    // TODO: 나중에 실제 API 연결
     console.log(payload);
 
     await apiPostJSON<any>(`/api/vote/${id}/day`, payload.map(({date, status}) => ({
@@ -83,15 +81,12 @@ export default function VoteScreen() {
         alert(`저장할 투표 수: ${payload.length}개`);
         goDetail();
     } else {
-        Alert.alert('미리보기', '저장할 투표 수: ${payload.length}개', [
+        Alert.alert('미리보기', `저장할 투표 수: ${payload.length}개`, [
             { text: '확인', onPress: goDetail },
         ]);
         }
     }, [myVotes, id, title, router]);
 
-
-  // dayComponent: 노란 점은 편집 화면에서는 쓰지 않고, 배경색으로 즉시 피드백
-  // 선택 테두리/노란점 없이 심플하게
   const DayCell = ({
     date,
     state,
