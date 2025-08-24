@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { apiGetJSON, apiPostJSON, getAccessToken } from "../lib/api";
+import { apiDeleteJSON, apiGetJSON, apiPostJSON, getAccessToken } from "../lib/api";
 
 type FriendItem = {
   uid: string;
@@ -173,21 +173,9 @@ export default function FriendNGroupScreen() {
     }
 
     try {
-      const response = await fetch("https://api.ldh.monster/api/friends/add", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ friendEmail: newFriendEmail }),
+      const data = await apiPostJSON<any>("https://api.ldh.monster/api/friends/add", {
+        friendEmail: newFriendEmail
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        Alert.alert("오류", data.message || "친구 추가 실패");
-        return;
-      }
 
       const addedFriend = data.friend;
 
@@ -211,14 +199,7 @@ export default function FriendNGroupScreen() {
         onPress: async () => {
           try {
             // 백엔드에 삭제 요청
-            const token = await getAccessToken();
-            await fetch(`https://api.ldh.monster/api/friends/${friendId}`, {
-              method: "DELETE",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-
-            });
+            await apiDeleteJSON<any>(`https://api.ldh.monster/api/friends/${friendId}`);
 
             // 프론트 상태에서도 제거
             setFriends((prev) => prev.filter((f) => f.uid !== friendId));
